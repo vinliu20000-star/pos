@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a1a2e">
+<title>CBT77 主選單</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@600;700&display=swap');
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  font-family: 'Noto Sans TC', sans-serif;
+  background: #1a1a2e;
+  color: white;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+/* Header */
+header {
+  padding: 16px 24px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+.store-name {
+  font-size: 1.3rem;
+  font-weight: 900;
+  letter-spacing: .02em;
+  color: white;
+}
+.store-name span { color: #f59e0b; }
+.header-right {
+  text-align: right;
+}
+#home-clock {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: white;
+}
+#home-date {
+  font-size: .75rem;
+  color: rgba(255,255,255,.5);
+  margin-top: 2px;
+}
+
+/* Today summary bar */
+#today-bar {
+  margin: 0 16px 14px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  padding: 12px 20px;
+  display: flex;
+  gap: 0;
+  flex-shrink: 0;
+}
+.today-item {
+  flex: 1;
+  text-align: center;
+  border-right: 1px solid rgba(255,255,255,.1);
+}
+.today-item:last-child { border-right: none; }
+.today-label { font-size: .7rem; color: rgba(255,255,255,.5); margin-bottom: 4px; }
+.today-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #f59e0b;
+}
+.today-val.green { color: #34d399; }
+.today-val.blue { color: #60a5fa; }
+
+/* Grid */
+#grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 12px;
+  padding: 0 16px 16px;
+  overflow: hidden;
+}
+
+.tile {
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: transform .15s, opacity .15s;
+  position: relative;
+  overflow: hidden;
+  padding: 16px;
+}
+.tile:active { transform: scale(.95); opacity: .88; }
+.tile-icon { font-size: 2.4rem; line-height: 1; }
+.tile-label {
+  font-size: .88rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.3;
+  color: white;
+}
+.tile-sub {
+  font-size: .7rem;
+  color: rgba(255,255,255,.65);
+  text-align: center;
+}
+
+/* Tile colors */
+.tile-pos {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  grid-column: span 1;
+  grid-row: span 2;
+}
+.tile-pos .tile-icon { font-size: 3rem; }
+.tile-pos .tile-label { font-size: 1rem; }
+
+.tile-daily { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+.tile-void  { background: linear-gradient(135deg, #dc2626, #b91c1c); }
+.tile-txn   { background: linear-gradient(135deg, #059669, #047857); }
+.tile-prod  { background: linear-gradient(135deg, #7c3aed, #6d28d9); }
+
+/* Badge */
+.tile-badge {
+  position: absolute;
+  top: 10px; right: 10px;
+  background: rgba(255,255,255,.25);
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: .68rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+}
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.7);
+  display: none; align-items: center; justify-content: center;
+  z-index: 100; padding: 16px;
+  backdrop-filter: blur(4px);
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: #1e2230;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 16px;
+  padding: 24px;
+  width: 100%; max-width: 500px;
+  max-height: 85dvh;
+  display: flex; flex-direction: column; gap: 14px;
+  animation: mIn .25s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes mIn { from{opacity:0;transform:scale(.93)} to{opacity:1;transform:scale(1)} }
+.modal-title {
+  font-size: 1.1rem; font-weight: 800;
+  display: flex; align-items: center; gap: 8px;
+}
+.modal-close {
+  margin-left: auto;
+  background: rgba(255,255,255,.1);
+  border: none; border-radius: 8px;
+  color: white; padding: 6px 12px;
+  cursor: pointer; font-size: .85rem;
+}
+.modal-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.modal-body::-webkit-scrollbar { width: 3px; }
+.modal-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 3px; }
+
+/* Stats table */
+.stats-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px;
+  background: rgba(255,255,255,.05);
+  border-radius: 8px;
+  font-size: .9rem;
+}
+.stats-row .sk { color: rgba(255,255,255,.65); }
+.stats-row .sv {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700; color: #f59e0b;
+}
+.stats-row.header {
+  background: rgba(255,255,255,.1);
+  font-size: .78rem; font-weight: 700;
+  color: rgba(255,255,255,.5);
+}
+.stats-row.header .sv { color: rgba(255,255,255,.5); }
+
+/* Transaction list */
+.txn-item {
+  background: rgba(255,255,255,.05);
+  border-radius: 8px; padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.txn-top { display: flex; justify-content: space-between; align-items: center; }
+.txn-id { font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: rgba(255,255,255,.5); }
+.txn-amt { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 1rem; color: #34d399; }
+.txn-amt.voided { color: #f87171; text-decoration: line-through; }
+.txn-bot { display: flex; justify-content: space-between; font-size: .78rem; color: rgba(255,255,255,.5); }
+.txn-void-btn {
+  background: rgba(220,38,38,.2);
+  border: 1px solid rgba(220,38,38,.4);
+  border-radius: 6px; padding: 3px 10px;
+  color: #f87171; font-size: .75rem; cursor: pointer;
+  transition: background .15s;
+}
+.txn-void-btn:hover { background: rgba(220,38,38,.4); }
+.txn-void-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Loading spinner in modal */
+.modal-spinner {
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px; color: rgba(255,255,255,.4);
+  flex-direction: column; gap: 12px;
+}
+.mini-spinner {
+  width: 32px; height: 32px;
+  border: 2px solid rgba(255,255,255,.15);
+  border-top-color: #f59e0b;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Toast */
+#toast {
+  position: fixed; bottom: 20px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: #1e2230; color: white;
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 8px; padding: 9px 18px; font-size: .85rem;
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+  z-index: 9999; white-space: nowrap; pointer-events: none;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.ok { border-color: #34d399; color: #34d399; }
+#toast.err { border-color: #f87171; color: #f87171; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="store-name">草本堂<span>中藥房</span></div>
+    <div style="font-size:.72rem;color:rgba(255,255,255,.4);margin-top:2px">收銀管理系統</div>
+  </div>
+  <div class="header-right">
+    <div id="home-clock"></div>
+    <div id="home-date"></div>
+  </div>
+</header>
+
+<div id="today-bar">
+  <div class="today-item">
+    <div class="today-label">今日營業額</div>
+    <div class="today-val" id="bar-revenue">載入中</div>
+  </div>
+  <div class="today-item">
+    <div class="today-label">今日訂單數</div>
+    <div class="today-val green" id="bar-orders">—</div>
+  </div>
+  <div class="today-item">
+    <div class="today-label">今日件數</div>
+    <div class="today-val blue" id="bar-items">—</div>
+  </div>
+</div>
+
+<div id="grid">
+  <!-- POS -->
+  <div class="tile tile-pos" onclick="gotoPOS()">
+    <div class="tile-icon">🏪</div>
+    <div class="tile-label">開始收銀</div>
+    <div class="tile-sub">POS 結帳系統</div>
+  </div>
+
+  <!-- 日銷統計 -->
+  <div class="tile tile-daily" onclick="openDaily()">
+    <div class="tile-icon">📊</div>
+    <div class="tile-label">日銷統計</div>
+    <div class="tile-sub">今日營收報表</div>
+  </div>
+
+  <!-- 銷售作廢 -->
+  <div class="tile tile-void" onclick="openVoid()">
+    <div class="tile-icon">🗑️</div>
+    <div class="tile-label">銷售作廢</div>
+    <div class="tile-sub">取消訂單</div>
+  </div>
+
+  <!-- 交易明細 -->
+  <div class="tile tile-txn" onclick="openTxn()">
+    <div class="tile-icon">📋</div>
+    <div class="tile-label">交易明細</div>
+    <div class="tile-sub">今日所有交易</div>
+  </div>
+
+  <!-- 日商品統計 -->
+  <div class="tile tile-prod" onclick="openProd()">
+    <div class="tile-icon">📦</div>
+    <div class="tile-label">日商品統計</div>
+    <div class="tile-sub">商品銷售排行</div>
+  </div>
+</div>
+
+<!-- Daily Stats Modal -->
+<div class="modal-overlay" id="daily-modal">
+  <div class="modal">
+    <div class="modal-title">📊 日銷統計<button class="modal-close" onclick="closeModal('daily-modal')">關閉</button></div>
+    <div class="modal-body" id="daily-body"><div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div></div>
+  </div>
+</div>
+
+<!-- Void Modal -->
+<div class="modal-overlay" id="void-modal">
+  <div class="modal">
+    <div class="modal-title">🗑️ 銷售作廢<button class="modal-close" onclick="closeModal('void-modal')">關閉</button></div>
+    <div class="modal-body" id="void-body"><div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div></div>
+  </div>
+</div>
+
+<!-- Transaction Modal -->
+<div class="modal-overlay" id="txn-modal">
+  <div class="modal">
+    <div class="modal-title">📋 交易明細<button class="modal-close" onclick="closeModal('txn-modal')">關閉</button></div>
+    <div class="modal-body" id="txn-body"><div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div></div>
+  </div>
+</div>
+
+<!-- Product Stats Modal -->
+<div class="modal-overlay" id="prod-modal">
+  <div class="modal">
+    <div class="modal-title">📦 日商品統計<button class="modal-close" onclick="closeModal('prod-modal')">關閉</button></div>
+    <div class="modal-body" id="prod-body"><div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const STORE_URL = 'https://cbt77.tw';
+let _savedCfg = null;
+
+function getCfg() {
+  if (_savedCfg) return _savedCfg;
+  try { _savedCfg = JSON.parse(localStorage.getItem('cbt77_cfg')||'{}'); } catch(e) { _savedCfg = {}; }
+  return _savedCfg;
+}
+function wcAuth() {
+  const c = getCfg();
+  return 'Basic ' + btoa(`${c.key||''}:${c.secret||''}`);
+}
+async function wcGet(path) {
+  return fetch(`${STORE_URL}/wp-json/wc/v3/${path}`, { headers: { Authorization: wcAuth() } });
+}
+
+// Clock
+function updateClock() {
+  const now = new Date();
+  document.getElementById('home-clock').textContent =
+    now.toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  document.getElementById('home-date').textContent =
+    now.toLocaleDateString('zh-TW', {year:'numeric',month:'long',day:'numeric',weekday:'short'});
+}
+setInterval(updateClock, 1000); updateClock();
+
+// Today bar
+async function loadTodayStats() {
+  try {
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0];
+    const r = await wcGet(`reports/sales?date_min=${dateStr}&date_max=${dateStr}`);
+    if (!r.ok) return;
+    const data = await r.json();
+    const d = data[0] || {};
+    document.getElementById('bar-revenue').textContent = `$${Number(d.total_sales||0).toLocaleString()}`;
+    document.getElementById('bar-orders').textContent = d.total_orders || 0;
+    document.getElementById('bar-items').textContent = d.total_items || 0;
+  } catch(e) {
+    document.getElementById('bar-revenue').textContent = '—';
+  }
+}
+loadTodayStats();
+
+// Navigation
+function gotoPOS() {
+  window.location.href = 'pos.html';
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+// Today orders helper
+async function getTodayOrders() {
+  const today = new Date();
+  const dateStr = today.toISOString().split('T')[0];
+  const r = await wcGet(`orders?after=${dateStr}T00:00:00&before=${dateStr}T23:59:59&per_page=100&status=completed,processing`);
+  if (!r.ok) return [];
+  return await r.json();
+}
+
+// Daily Stats
+async function openDaily() {
+  document.getElementById('daily-modal').classList.add('show');
+  const body = document.getElementById('daily-body');
+  body.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div>';
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const [saleRes, orderRes] = await Promise.all([
+      wcGet(`reports/sales?date_min=${today}&date_max=${today}`),
+      getTodayOrders()
+    ]);
+    const sale = saleRes.ok ? (await saleRes.json())[0] || {} : {};
+    const orders = orderRes;
+
+    const totalSales = Number(sale.total_sales||0);
+    const totalOrders = sale.total_orders || orders.length;
+    const totalItems = sale.total_items || orders.reduce((s,o)=>s+o.line_items.reduce((ss,i)=>ss+i.quantity,0),0);
+    const avgOrder = totalOrders > 0 ? Math.round(totalSales/totalOrders) : 0;
+    const cash = orders.filter(o=>o.payment_method==='cash').reduce((s,o)=>s+Number(o.total),0);
+
+    body.innerHTML = `
+      <div class="stats-row"><span class="sk">📅 日期</span><span class="sv">${today}</span></div>
+      <div class="stats-row"><span class="sk">💰 總營業額</span><span class="sv">$${totalSales.toLocaleString()}</span></div>
+      <div class="stats-row"><span class="sk">🧾 訂單數</span><span class="sv">${totalOrders} 筆</span></div>
+      <div class="stats-row"><span class="sk">📦 銷售件數</span><span class="sv">${totalItems} 件</span></div>
+      <div class="stats-row"><span class="sk">💵 現金收入</span><span class="sv">$${cash.toLocaleString()}</span></div>
+      <div class="stats-row"><span class="sk">📊 平均客單價</span><span class="sv">$${avgOrder.toLocaleString()}</span></div>
+    `;
+  } catch(e) {
+    body.innerHTML = '<div class="modal-spinner">載入失敗，請確認連線</div>';
+  }
+}
+
+// Void (cancel orders)
+async function openVoid() {
+  document.getElementById('void-modal').classList.add('show');
+  const body = document.getElementById('void-body');
+  body.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div>';
+  try {
+    const orders = await getTodayOrders();
+    if (!orders.length) { body.innerHTML = '<div class="modal-spinner">今日尚無訂單</div>'; return; }
+    body.innerHTML = orders.map(o => `
+      <div class="txn-item">
+        <div class="txn-top">
+          <span class="txn-id">#${o.id} · ${new Date(o.date_created).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}</span>
+          <span class="txn-amt ${o.status==='cancelled'?'voided':''}">$${Number(o.total).toLocaleString()}</span>
+        </div>
+        <div class="txn-bot">
+          <span>${o.billing?.last_name||''}${o.billing?.first_name||''} · ${o.line_items?.length||0} 項商品</span>
+          ${o.status!=='cancelled'
+            ? `<button class="txn-void-btn" onclick="voidOrder(${o.id},this)">作廢</button>`
+            : `<span style="color:#f87171;font-size:.75rem">已作廢</span>`}
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    body.innerHTML = '<div class="modal-spinner">載入失敗</div>';
+  }
+}
+
+async function voidOrder(orderId, btn) {
+  if (!confirm(`確定要作廢訂單 #${orderId}？此動作無法復原。`)) return;
+  btn.disabled = true; btn.textContent = '處理中…';
+  try {
+    const r = await fetch(`${STORE_URL}/wp-json/wc/v3/orders/${orderId}`, {
+      method: 'PUT',
+      headers: { Authorization: wcAuth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'cancelled' })
+    });
+    if (r.ok) {
+      btn.closest('.txn-item').querySelector('.txn-amt').classList.add('voided');
+      btn.replaceWith(Object.assign(document.createElement('span'),{
+        textContent:'已作廢', style:'color:#f87171;font-size:.75rem'
+      }));
+      toast('訂單已作廢','ok');
+      loadTodayStats();
+    } else throw new Error();
+  } catch(e) { btn.disabled=false; btn.textContent='作廢'; toast('作廢失敗','err'); }
+}
+
+// Transaction detail
+async function openTxn() {
+  document.getElementById('txn-modal').classList.add('show');
+  const body = document.getElementById('txn-body');
+  body.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div>';
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const r = await wcGet(`orders?after=${today}T00:00:00&before=${today}T23:59:59&per_page=100`);
+    const orders = r.ok ? await r.json() : [];
+    if (!orders.length) { body.innerHTML = '<div class="modal-spinner">今日尚無交易</div>'; return; }
+    body.innerHTML = orders.map(o => {
+      const statusMap = {'completed':'✅ 完成','cancelled':'❌ 作廢','processing':'⏳ 處理中'};
+      const items = (o.line_items||[]).map(i=>`${i.name} ×${i.quantity}`).join('、');
+      return `<div class="txn-item">
+        <div class="txn-top">
+          <span class="txn-id">#${o.id} · ${new Date(o.date_created).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}</span>
+          <span class="txn-amt ${o.status==='cancelled'?'voided':''}">$${Number(o.total).toLocaleString()}</span>
+        </div>
+        <div class="txn-bot">
+          <span>${statusMap[o.status]||o.status}</span>
+          <span>${o.billing?.last_name||''}${o.billing?.first_name||''}</span>
+        </div>
+        <div style="font-size:.72rem;color:rgba(255,255,255,.4);margin-top:4px">${items}</div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    body.innerHTML = '<div class="modal-spinner">載入失敗</div>';
+  }
+}
+
+// Product stats
+async function openProd() {
+  document.getElementById('prod-modal').classList.add('show');
+  const body = document.getElementById('prod-body');
+  body.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div>';
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const r = await wcGet(`reports/top_sellers?date_min=${today}&date_max=${today}&per_page=20`);
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+    if (!data.length) { body.innerHTML = '<div class="modal-spinner">今日尚無銷售資料</div>'; return; }
+    body.innerHTML = `
+      <div class="stats-row header"><span class="sk">商品名稱</span><span class="sv">銷售數量</span></div>
+      ${data.map((p,i)=>`
+        <div class="stats-row">
+          <span class="sk">${i+1}. ${p.name}</span>
+          <span class="sv">${p.quantity} 件</span>
+        </div>`).join('')}`;
+  } catch(e) {
+    body.innerHTML = '<div class="modal-spinner">載入失敗</div>';
+  }
+}
+
+let _tt;
+function toast(msg, type='info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'show ' + type;
+  clearTimeout(_tt); _tt = setTimeout(()=>el.className='', 2500);
+}
+</script>
+</body>
+</html>
