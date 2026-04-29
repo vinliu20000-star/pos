@@ -352,11 +352,13 @@ header {
 
 <script>
 const STORE_URL = 'https://cbt77.tw';
+const SAVED_KEY='ck_e0e254b239925f0be628a03730eec1e7c61fa6e0';
+const SAVED_SECRET='cs_3956bc73786c2d0827c5ce91e23b55fd985f2bf3';
 let _savedCfg = null;
 
 function getCfg() {
   if (_savedCfg) return _savedCfg;
-  try { _savedCfg = JSON.parse(localStorage.getItem('cbt77_cfg')||'{}'); } catch(e) { _savedCfg = {}; }
+  _savedCfg = {key:SAVED_KEY,secret:SAVED_SECRET};
   return _savedCfg;
 }
 function wcAuth() {
@@ -397,7 +399,7 @@ loadTodayStats();
 
 // Navigation
 function gotoPOS() {
-  window.location.href = 'pos.html';
+  window.location.href = 'https://vinliu20000-star.github.io/pos/';
 }
 function closeModal(id) {
   document.getElementById(id).classList.remove('show');
