@@ -436,23 +436,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   cfg={key:SAVED_KEY,secret:SAVED_SECRET};
   document.getElementById('setup-screen').style.display='none';
   bindEvents();
-  loadProducts();
-  return;
-//
-  bindEvents();
-  const saved = localStorage.getItem('cbt77_cfg');
-  if (saved) {
-    try {
-      const {key,secret} = JSON.parse(saved);
-      if (key && secret) {
-        cfg={key,secret};
-        document.getElementById('cfg-key').value=key;
-        document.getElementById('cfg-secret').value=secret;
-        autoConnect(key,secret);
-        return;
-      }
-    } catch(e){}
-  }
+  loadProducts().then(function(){setSyncStatus('green','已連線 · '+allProducts.length+' 件商品');});
 });
 
 async function autoConnect(key,secret) {
@@ -779,16 +763,6 @@ async function searchMember(){
   } catch(e){hideLoad();toast('查詢失敗','err');}
 }
 
-const TIERS=[
-  {key:'customer',label:'粉絲',color:'#6b7280',bg:'#f3f4f6'},
-  {key:'steel_fan',label:'鋼粉',color:'#92400e',bg:'#fef3c7'},
-  {key:'silver_fan',label:'銀粉',color:'#475569',bg:'#f1f5f9'},
-  {key:'silver',label:'銀粉',color:'#475569',bg:'#f1f5f9'},
-  {key:'gold_fan',label:'金粉',color:'#b45309',bg:'#fffbeb'},
-  {key:'gold',label:'金粉',color:'#b45309',bg:'#fffbeb'},
-  {key:'diamond_fan',label:'鑽粉',color:'#7c3aed',bg:'#f5f3ff'},
-  {key:'diamond',label:'鑽粉',color:'#7c3aed',bg:'#f5f3ff'},
-];
 function getTier(role){return TIERS.find(function(t){return t.key===role;})||TIERS[0];}
 function showMemberInfo(){
   const tier=getTier(member.role);
