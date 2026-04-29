@@ -779,6 +779,42 @@ async function searchMember(){
   } catch(e){hideLoad();toast('查詢失敗','err');}
 }
 
+const TIERS=[
+  {key:'customer',label:'粉絲',color:'#6b7280',bg:'#f3f4f6'},
+  {key:'steel_fan',label:'鋼粉',color:'#92400e',bg:'#fef3c7'},
+  {key:'silver_fan',label:'銀粉',color:'#475569',bg:'#f1f5f9'},
+  {key:'silver',label:'銀粉',color:'#475569',bg:'#f1f5f9'},
+  {key:'gold_fan',label:'金粉',color:'#b45309',bg:'#fffbeb'},
+  {key:'gold',label:'金粉',color:'#b45309',bg:'#fffbeb'},
+  {key:'diamond_fan',label:'鑽粉',color:'#7c3aed',bg:'#f5f3ff'},
+  {key:'diamond',label:'鑽粉',color:'#7c3aed',bg:'#f5f3ff'},
+];
+function getTier(role){return TIERS.find(function(t){return t.key===role;})||TIERS[0];}
+function showMemberInfo(){
+  const tier=getTier(member.role);
+  const av=document.getElementById('mi-av');
+  av.textContent=tier.label[0];av.style.background=tier.color;
+  document.getElementById('mi-name').textContent=member.name;
+  const te=document.getElementById('mi-tier');
+  te.textContent=tier.label;te.style.background=tier.bg;te.style.color=tier.color;
+  document.getElementById('mi-spend').textContent='今年累積 $'+(member.yearlySpend||0).toLocaleString();
+  document.getElementById('mi-pts').textContent=member.points.toLocaleString();
+  document.getElementById('member-info').style.display='flex';
+  document.getElementById('disc-sel').style.display='flex';
+  document.getElementById('redeem-row').style.display=member.points>0?'flex':'none';
+  updateSummary();
+}
+function clearMember(){
+  member=null;redeemPts=0;discPct=0;
+  document.getElementById('member-phone').value='';
+  document.getElementById('member-info').style.display='none';
+  document.getElementById('disc-sel').style.display='none';
+  document.getElementById('redeem-row').style.display='none';
+  document.getElementById('redeem-input').value='0';
+  document.querySelectorAll('.dopt').forEach(function(b,i){b.classList.toggle('active',i===0);});
+  updateSummary();
+}
+
 function openRegister(){
   const ph=document.getElementById('member-phone').value.trim();
   if(ph)document.getElementById('reg-phone').value=ph;
