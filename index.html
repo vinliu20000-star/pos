@@ -943,12 +943,14 @@ async function confirmCheckout(){
         headers:{Authorization:wcAuth(),'Content-Type':'application/json'},
         body:JSON.stringify({points:newPoints,role:newTier.key})
       });
-      // 更新年消費
-      await wcPut('customers/'+member.id,{
-        meta_data:[
+      // 更新年消費（用 WooCommerce customers API POST）
+      await fetch('https://cbt77.tw/wp-json/wc/v3/customers/'+member.id,{
+        method:'POST',
+        headers:{Authorization:wcAuth(),'Content-Type':'application/json'},
+        body:JSON.stringify({meta_data:[
           {key:SPEND_KEY,value:String(newYearSpend)},
           {key:SPEND_YR_KEY,value:String(thisYear)},
-        ]
+        ]})
       });
     }
 
