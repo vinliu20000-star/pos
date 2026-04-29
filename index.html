@@ -263,7 +263,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 
 <!-- TOPBAR -->
 <div id="topbar">
-  <div class="brand">CBT77 POS</div>
+  <div style="display:flex;align-items:center;gap:10px;"><a href="home.html" style="background:rgba(37,99,235,0.1);border:1px solid #bfdbfe;border-radius:7px;color:#2563eb;padding:5px 10px;font-size:12px;text-decoration:none;font-weight:600;">⬅ 主選單</a><div class="brand">CBT77 POS</div></div>
   <div id="clock"></div>
   <div id="sync-status"><div class="sdot" id="sync-dot"></div><span id="sync-text">未連線</span></div>
 </div>
@@ -941,7 +941,7 @@ async function confirmCheckout(){
       await fetch('https://cbt77.tw/wp-json/cbt77/v1/points/'+member.id,{
         method:'POST',
         headers:{Authorization:wcAuth(),'Content-Type':'application/json'},
-        body:JSON.stringify({points:newPoints,role:newTier.key})
+        body:JSON.stringify({points:newPoints})
       });
       // 更新年消費（用 WooCommerce customers API POST）
       await fetch('https://cbt77.tw/wp-json/wc/v3/customers/'+member.id,{
