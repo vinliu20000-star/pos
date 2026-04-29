@@ -723,80 +723,62 @@ async function searchMember(){
   const phone=document.getElementById('member-phone').value.trim();
   if(!phone)return;
   if(demoMode){
-    member={id:99,name:'示範 陳小明',email:'demo@cbt77.tw',phone,role:'gold_fan',points:350,yearlySpend:8500};
+    member={id:99,name:'劉子宏',email:'demo@cbt77.tw',phone,role:'diamond_fan',points:162,yearlySpend:8500};
     showMemberInfo();return;
   }
   showLoad('查詢會員…');
+  // 用 CBT77 Points API 插件查詢
+  try {
+    const pluginRes=await fetch('https://cbt77.tw/wp-json/cbt77/v1/member?phone='+encodeURIComponent(phone),{
+      headers:{Authorization:wcAuth()}
+    });
+    if(pluginRes.ok){
+      const m=await pluginRes.json();
+      hideLoad();
+      const tw=['粉絲','鋼粉','銀粉','金粉','鑽粉'];
+      let name=m.name||'';
+      tw.forEach(function(w){name=name.replace(w,'').trim();});
+      const rm={customer:'customer',subscriber:'customer',
+        silver:'silver_fan',silver_fan:'silver_fan',
+        gold:'gold_fan',gold_fan:'gold_fan',
+        diamond:'diamond_fan',diamond_fan:'diamond_fan',
+        steel:'steel_fan',steel_fan:'steel_fan'};
+      member={id:m.user_id,name:name||m.name,email:m.email,phone:phone,
+        role:rm[m.role]||'customer',points:m.points||0,yearlySpend:m.yearly_spend||0};
+      showMemberInfo();
+      toast('找到：'+member.name,'ok');
+      return;
+    }
+  } catch(e){ console.log('plugin error',e); }
+  // 備援：WooCommerce API
   try {
     const clean=phone.replace(/\D/g,'');
-    const r=await wcGet(`customers?search=${encodeURIComponent(phone)}&per_page=20`);
+    const r=await wcGet('customers?search='+encodeURIComponent(phone)+'&per_page=20');
     const data=r.ok?await r.json():[];
-    let found=data.find(c=>{
-      const bp=(c.billing?.phone||'').replace(/\D/g,'');
+    let found=data.find(function(c){
+      const bp=(c.billing&&c.billing.phone?c.billing.phone:'').replace(/\D/g,'');
       return bp===clean||bp.endsWith(clean)||clean.endsWith(bp);
     });
-    if(!found){
-      const r2=await wcGet(`customers?username=${encodeURIComponent(phone)}&per_page=5`);
-      const d2=r2.ok?await r2.json():[];
-      if(d2.length)found=d2[0];
-    }
+    if(!found){hideLoad();toast('找不到此電話的會員','err');return;}
+    const rFull=await wcGet('customers/'+found.id);
+    const full=rFull.ok?await rFull.json():found;
     hideLoad();
-    if(!found){toast('⚠ 找不到此電話的會員','err');return;}
-
-    const getMeta=key=>{
-      const m=(found.meta_data||[]).find(x=>x.key===key);
-      return m?m.value:null;
-    };
-
-    // 點數：讀 Vite Rewards 的 _viter_points
-    const points=parseInt(getMeta(PTS_KEY)||'0')||0;
-
-    // 年累積消費
-    const savedYear=parseInt(getMeta(SPEND_YR_KEY)||'0')||0;
-    const thisYear=new Date().getFullYear();
-    const yearlySpend=savedYear===thisYear?(parseInt(getMeta(SPEND_KEY)||'0')||0):0;
-
-    member={
-      id:found.id,
-      name:`${found.last_name||''}${found.first_name||''}`||found.username||found.email.split('@')[0],
-      email:found.email, phone,
-      role:found.role||'customer',
-      points, yearlySpend,
-    };
+    const tw=['粉絲','鋼粉','銀粉','金粉','鑽粉'];
+    let fn=(full.first_name||'').trim(),ln=(full.last_name||'').trim();
+    tw.forEach(function(w){fn=fn.replace(w,'').trim();ln=ln.replace(w,'').trim();});
+    const name=(ln+fn).trim()||full.display_name||full.username||'';
+    const rm={customer:'customer',subscriber:'customer',
+      silver:'silver_fan',silver_fan:'silver_fan',
+      gold:'gold_fan',gold_fan:'gold_fan',
+      diamond:'diamond_fan',diamond_fan:'diamond_fan',
+      steel:'steel_fan',steel_fan:'steel_fan'};
+    member={id:full.id,name:name,email:full.email,phone:phone,
+      role:rm[full.role||'customer']||'customer',points:0,yearlySpend:0};
     showMemberInfo();
-    toast(`✓ 找到：${member.name}`,'ok');
+    toast('找到：'+member.name,'ok');
   } catch(e){hideLoad();toast('查詢失敗','err');}
 }
 
-function getTier(role){return TIERS.find(t=>t.key===role)||TIERS[0];}
-function showMemberInfo(){
-  const tier=getTier(member.role);
-  const av=document.getElementById('mi-av');
-  av.textContent=tier.label[0]; av.style.background=tier.color;
-  document.getElementById('mi-name').textContent=member.name;
-  const te=document.getElementById('mi-tier');
-  te.textContent=tier.label; te.style.background=tier.bg; te.style.color=tier.color;
-  document.getElementById('mi-spend').textContent=`今年累積 $${(member.yearlySpend||0).toLocaleString()}`;
-  document.getElementById('mi-pts').textContent=member.points.toLocaleString();
-  document.getElementById('member-info').style.display='flex';
-  document.getElementById('disc-sel').style.display='flex';
-  document.getElementById('redeem-row').style.display=member.points>0?'flex':'none';
-  updateSummary();
-}
-function clearMember(){
-  member=null;redeemPts=0;discPct=0;
-  document.getElementById('member-phone').value='';
-  document.getElementById('member-info').style.display='none';
-  document.getElementById('disc-sel').style.display='none';
-  document.getElementById('redeem-row').style.display='none';
-  document.getElementById('redeem-input').value='0';
-  document.querySelectorAll('.dopt').forEach((b,i)=>b.classList.toggle('active',i===0));
-  updateSummary();
-}
-
-// ═══════════════════════════════════════════
-// REGISTER
-// ═══════════════════════════════════════════
 function openRegister(){
   const ph=document.getElementById('member-phone').value.trim();
   if(ph)document.getElementById('reg-phone').value=ph;
