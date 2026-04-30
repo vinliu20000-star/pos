@@ -408,7 +408,7 @@ const PTS_VALUE    = 1;                 // 1點 = $1
 
 const TIERS = [
   { key:'customer',    label:'粉絲', color:'#6b7280', bg:'#f3f4f6', single:99,   yearly:0     },
-  { key:'steel_fan',   label:'鋼粉', color:'#92400e', bg:'#fef3c7', single:199,  yearly:1000  },
+  { key:'steel_fan',   label:'鐵粉', color:'#92400e', bg:'#fef3c7', single:199,  yearly:1000  },
   { key:'silver_fan',  label:'銀粉', color:'#475569', bg:'#f1f5f9', single:999,  yearly:5000  },
   { key:'gold_fan',    label:'金粉', color:'#b45309', bg:'#fffbeb', single:2999, yearly:10000 },
   { key:'diamond_fan', label:'鑽粉', color:'#7c3aed', bg:'#f5f3ff', single:3999, yearly:25000 },
@@ -719,7 +719,7 @@ async function searchMember(){
     if(pluginRes.ok){
       const m=await pluginRes.json();
       hideLoad();
-      const tw=['粉絲','鋼粉','銀粉','金粉','鑽粉'];
+      const tw=['粉絲','鐵粉','銀粉','金粉','鑽粉'];
       let name=m.name||'';
       tw.forEach(function(w){name=name.replace(w,'').trim();});
       const rm={customer:'customer',subscriber:'customer',
@@ -747,7 +747,7 @@ async function searchMember(){
     const rFull=await wcGet('customers/'+found.id);
     const full=rFull.ok?await rFull.json():found;
     hideLoad();
-    const tw=['粉絲','鋼粉','銀粉','金粉','鑽粉'];
+    const tw=['粉絲','鐵粉','銀粉','金粉','鑽粉'];
     let fn=(full.first_name||'').trim(),ln=(full.last_name||'').trim();
     tw.forEach(function(w){fn=fn.replace(w,'').trim();ln=ln.replace(w,'').trim();});
     const name=(ln+fn).trim()||full.display_name||full.username||'';
