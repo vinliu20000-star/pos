@@ -726,7 +726,7 @@ async function searchMember(){
         silver:'silver_fan',silver_fan:'silver_fan',
         gold:'gold_fan',gold_fan:'gold_fan',
         diamond:'diamond_fan',diamond_fan:'diamond_fan',
-        steel:'steel_fan',steel_fan:'steel_fan'};
+        steel:'steel_fan',steel_fan:'steel_fan',iron:'steel_fan'};
       member={id:m.user_id,name:name||m.name,email:m.email,phone:phone,
         role:rm[m.role]||'customer',points:m.points||0,yearlySpend:m.yearly_spend||0};
       showMemberInfo();
@@ -755,7 +755,7 @@ async function searchMember(){
       silver:'silver_fan',silver_fan:'silver_fan',
       gold:'gold_fan',gold_fan:'gold_fan',
       diamond:'diamond_fan',diamond_fan:'diamond_fan',
-      steel:'steel_fan',steel_fan:'steel_fan'};
+      steel:'steel_fan',steel_fan:'steel_fan',iron:'steel_fan'};
     member={id:full.id,name:name,email:full.email,phone:phone,
       role:rm[full.role||'customer']||'customer',points:0,yearlySpend:0};
     showMemberInfo();
