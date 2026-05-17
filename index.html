@@ -592,7 +592,7 @@ function filterProds(q,catId){
 }
 function renderProds(){
   const grid=document.getElementById('product-grid');
-  grid.innerHTML='';
+  grid.querySelectorAll('.pcard').forEach(e=>e.remove());
   document.getElementById('no-products').style.display=filteredProducts.length?'none':'block';
   filteredProducts.forEach(p=>grid.appendChild(mkPCard(p)));
 }
