@@ -104,8 +104,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 .pcard:hover { border-color: var(--accent-mid); box-shadow: var(--shadow-md); }
 .pcard:active { transform: scale(.97); }
 .pcard.added { border-color: var(--green) !important; animation: addFlash .35s ease; }
-@keyframes addFlash { 0%{background:var(--green-light)} 100%{background:var(--surface)} }
-.pimg { width: 100%; aspect-ratio: 4/3; background: var(--surface3); display: flex; align-items: center; justify-content: center; overflow: visible; }
+@keyframes addFlash { 0%{background:var(--green-light)} 100%{background:var(--surface)} }.pimg { width: 100%; aspect-ratio: 1; background: var(--surface3); display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .pimg img { width: 100%; height: 100%; object-fit: cover; transition: transform .2s; }
 .pcard:hover .pimg img { transform: scale(1.04); }
 .pimg-ph { font-size: 2.2rem; color: var(--border2); }
