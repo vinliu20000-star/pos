@@ -237,7 +237,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 <body>
 
 <!-- SETUP -->
-<div id="setup-screen" style="display:none">
+<div id="setup-screen">
   <div style="text-align:center">
     <div class="setup-logo">CBT<span>77</span></div>
     <div class="setup-tagline">POS 收銀系統</div>
@@ -437,12 +437,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   cfg={key:SAVED_KEY,secret:SAVED_SECRET};
   document.getElementById('setup-screen').style.display='none';
   bindEvents();
-  loadProducts().then(function(){
-  if(allProducts.length>0){
-    setSyncStatus('green','已連線 · '+allProducts.length+' 件商品');
-  } else {
-    setSyncStatus('yellow','連線失敗，請按重載');
-  }
+  loadProducts().then(function(){setSyncStatus('green','已連線 · '+allProducts.length+' 件商品');});
 });
 
 async function autoConnect(key,secret) {
@@ -532,7 +527,7 @@ async function loadProducts() {
   while(true) {
     document.getElementById('loading-sub').textContent=`已載入 ${allProducts.length} 件…`;
     try {
-     const r=await wcGet(`products?per_page=100&page=${pg}&status=publish&_fields=id,name,sku,price,images,categories,manage_stock,stock_quantity,meta_data`);
+      const r=await wcGet(`products?per_page=100&page=${pg}&status=publish`);
       if(!r.ok)break;
       const data=await r.json(); if(!data.length)break;
       data.forEach(p=>{
@@ -544,7 +539,7 @@ async function loadProducts() {
       });
       allProducts.push(...data);
       if(data.length<100)break; pg++;
-    } catch(e){setSyncStatus('yellow','連線失敗，重試中…');break;}
+    } catch(e){break;}
   }
   const cm={};
   allProducts.forEach(p=>p.categories.forEach(c=>cm[c.id]=c.name));
@@ -606,17 +601,13 @@ else{grid.querySelectorAll('.load-more-btn').forEach(e=>e.remove());}
   slice.forEach(p=>grid.appendChild(mkPCard(p)));
   const old=grid.querySelector('.load-more-btn');if(old)old.remove();
   if(end<filteredProducts.length){
-  const sentinel=document.createElement('div');
-  sentinel.className='load-more-btn';
-  sentinel.style.cssText='grid-column:1/-1;height:40px;';
-  grid.appendChild(sentinel);
-  new IntersectionObserver((entries,obs)=>{
-    if(entries[0].isIntersecting){
-      obs.disconnect();
-      currentPage++;
-      renderProds(false);
-    }
-  },{threshold:0.1}).observe(sentinel);
+    const btn=document.createElement('button');
+    btn.className='load-more-btn';
+    btn.style.cssText='grid-column:1/-1;padding:10px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:8px;cursor:pointer;font-size:.85rem;color:var(--text2);font-weight:600;';
+    btn.textContent='載入更多（還有'+(filteredProducts.length-end)+'件）';
+    btn.onclick=function(){currentPage++;renderProds(false);};
+    grid.appendChild(btn);
+  }
 }
 function mkPCard(p){
   const inCart=cart.find(c=>c.product.id===p.id);
@@ -625,8 +616,10 @@ function mkPCard(p){
   div.className='pcard'+(out?' out':''); div.dataset.id=p.id;
   const img=p.images&&p.images[0];
   const imgHtml=img&&img.src
-  ?`<div class="pimg"><img src="${img.src}" onerror="this.parentElement.innerHTML='<div class=pimg-ph>🏷️</div>'"></div>`
-  :`<div class="pimg"><div class="pimg-ph">🏷️</div></div>`;
+    ?`<div class="pimg"><img src="${img.src}" onerror="this.parentElement.innerHTML='<div class=pimg-ph>🏷️</div>'"></div>`
+    :img&&img._ph
+    ?`<div class="pimg" style="background:${img._bg}"><div class="pimg-ph">${img._ph}</div></div>`
+    :`<div class="pimg"><div class="pimg-ph">🏷️</div></div>`;
   div.innerHTML=`
     ${inCart?`<div class="in-cart-badge">${inCart.qty}</div>`:''}
     ${imgHtml}
