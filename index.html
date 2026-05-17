@@ -275,7 +275,13 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
       <input type="text" id="scan-input" placeholder="📷 條碼掃描 Enter 確認" autocomplete="off" spellcheck="false">
       <input type="text" id="search-input" placeholder="🔍 搜尋商品名稱 / SKU">
     </div>
-    <div id="cat-bar"></div>
+    <div style="display:flex;align-items:center;gap:0;">
+  <div id="cat-bar" style="flex:1;"></div>
+  <div style="display:flex;flex-direction:column;background:var(--surface);border-left:1px solid var(--border);border-bottom:1px solid var(--border);">
+    <button onclick="document.getElementById('product-grid').scrollBy(0,-300)" style="padding:6px 10px;border:none;background:transparent;cursor:pointer;font-size:1rem;color:var(--text2);">▲</button>
+    <button onclick="document.getElementById('product-grid').scrollBy(0,300)" style="padding:6px 10px;border:none;background:transparent;cursor:pointer;font-size:1rem;color:var(--text2);">▼</button>
+  </div>
+</div>
     <div id="product-grid"><div id="no-products">沒有符合的商品</div></div>
   </div>
 
