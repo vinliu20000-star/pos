@@ -593,6 +593,7 @@ function filterProds(q,catId){
 function renderProds(reset=true){
   const grid=document.getElementById('product-grid');
   if(reset){currentPage=0;grid.querySelectorAll('.pcard,.load-more-btn').forEach(e=>e.remove());}
+else{grid.querySelectorAll('.load-more-btn').forEach(e=>e.remove());}
   document.getElementById('no-products').style.display=filteredProducts.length?'none':'block';
   const start=currentPage*PAGE_SIZE;
   const end=start+PAGE_SIZE;
