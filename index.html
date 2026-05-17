@@ -822,7 +822,7 @@ async function registerMember(){
     const genEmail=email||`${phone}@cbt77.tw`;
     const genPwd=phone;
     const body={
-      email:genEmail,first_name:first,last_name:last,username:phone,role:'customer',
+      email:genEmail,first_name:first,last_name:last,username:phone,role:'customer',password:genPwd,
       billing:{phone,first_name:first,last_name:last,email:genEmail},
       meta_data:[
         {key:PTS_KEY,value:'0'},         // Vite Rewards 點數
