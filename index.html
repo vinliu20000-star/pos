@@ -237,7 +237,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 <body>
 
 <!-- SETUP -->
-<div id="setup-screen" style="display:none">
+<div id="setup-screen">
   <div style="text-align:center">
     <div class="setup-logo">CBT<span>77</span></div>
     <div class="setup-tagline">POS 收銀系統</div>
@@ -590,11 +590,24 @@ function filterProds(q,catId){
   });
   renderProds();
 }
-function renderProds(){
+function renderProds(reset=true){
   const grid=document.getElementById('product-grid');
-  grid.querySelectorAll('.pcard').forEach(e=>e.remove());
+  if(reset){currentPage=0;grid.querySelectorAll('.pcard,.load-more-btn').forEach(e=>e.remove());}
+else{grid.querySelectorAll('.load-more-btn').forEach(e=>e.remove());}
   document.getElementById('no-products').style.display=filteredProducts.length?'none':'block';
-  filteredProducts.forEach(p=>grid.appendChild(mkPCard(p)));
+  const start=currentPage*PAGE_SIZE;
+  const end=start+PAGE_SIZE;
+  const slice=filteredProducts.slice(start,end);
+  slice.forEach(p=>grid.appendChild(mkPCard(p)));
+  const old=grid.querySelector('.load-more-btn');if(old)old.remove();
+  if(end<filteredProducts.length){
+    const btn=document.createElement('button');
+    btn.className='load-more-btn';
+    btn.style.cssText='grid-column:1/-1;padding:10px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:8px;cursor:pointer;font-size:.85rem;color:var(--text2);font-weight:600;';
+    btn.textContent='載入更多（還有'+(filteredProducts.length-end)+'件）';
+    btn.onclick=function(){currentPage++;renderProds(false);};
+    grid.appendChild(btn);
+  }
 }
 function mkPCard(p){
   const inCart=cart.find(c=>c.product.id===p.id);
@@ -603,7 +616,7 @@ function mkPCard(p){
   div.className='pcard'+(out?' out':''); div.dataset.id=p.id;
   const img=p.images&&p.images[0];
   const imgHtml=img&&img.src
-   ?`<div class="pimg"><img src="${img.src}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=pimg-ph>🏷️</div>'"></div>`
+    ?`<div class="pimg"><img src="${img.src}" onerror="this.parentElement.innerHTML='<div class=pimg-ph>🏷️</div>'"></div>`
     :img&&img._ph
     ?`<div class="pimg" style="background:${img._bg}"><div class="pimg-ph">${img._ph}</div></div>`
     :`<div class="pimg"><div class="pimg-ph">🏷️</div></div>`;
