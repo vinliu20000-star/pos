@@ -936,6 +936,13 @@ async function confirmCheckout(){
       const newYearSpend=(member.yearlySpend||0)+tot;
       const newTier=calcNewTier(member.role,sub,newYearSpend);
       if(newTier.key!==member.role)upgraded=newTier;
+      if(upgraded){
+        await fetch('https://cbt77.tw/wp-json/wc/v3/customers/'+member.id,{
+          method:'POST',
+          headers:{Authorization:wcAuth(),'Content-Type':'application/json'},
+          body:JSON.stringify({role:upgraded.key})
+        });
+      }
 
       // 更新 WooCommerce 用戶：_viter_points（Vite Rewards 同步）+ 年消費 + 等級
       // 用 CBT77 Points API 更新點數和等級
