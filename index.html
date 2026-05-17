@@ -616,10 +616,8 @@ function mkPCard(p){
   div.className='pcard'+(out?' out':''); div.dataset.id=p.id;
   const img=p.images&&p.images[0];
   const imgHtml=img&&img.src
-    ?`<div class="pimg"><img src="${img.src}" onerror="this.parentElement.innerHTML='<div class=pimg-ph>🏷️</div>'"></div>`
-    :img&&img._ph
-    ?`<div class="pimg" style="background:${img._bg}"><div class="pimg-ph">${img._ph}</div></div>`
-    :`<div class="pimg"><div class="pimg-ph">🏷️</div></div>`;
+  ?`<div class="pimg"><img src="${img.src}" onerror="this.parentElement.innerHTML='<div class=pimg-ph>🏷️</div>'"></div>`
+  :`<div class="pimg"><div class="pimg-ph">🏷️</div></div>`;
   div.innerHTML=`
     ${inCart?`<div class="in-cart-badge">${inCart.qty}</div>`:''}
     ${imgHtml}
