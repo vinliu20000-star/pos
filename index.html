@@ -237,7 +237,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 <body>
 
 <!-- SETUP -->
-<div id="setup-screen">
+<div id="setup-screen" style="display:none">
   <div style="text-align:center">
     <div class="setup-logo">CBT<span>77</span></div>
     <div class="setup-tagline">POS 收銀系統</div>
@@ -616,7 +616,7 @@ function mkPCard(p){
   div.className='pcard'+(out?' out':''); div.dataset.id=p.id;
   const img=p.images&&p.images[0];
   const imgHtml=img&&img.src
-    ?`<div class="pimg"><img src="${img.src}" onerror="this.parentElement.innerHTML='<div class=pimg-ph>🏷️</div>'"></div>`
+   ?`<div class="pimg"><img src="${img.src}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=pimg-ph>🏷️</div>'"></div>`
     :img&&img._ph
     ?`<div class="pimg" style="background:${img._bg}"><div class="pimg-ph">${img._ph}</div></div>`
     :`<div class="pimg"><div class="pimg-ph">🏷️</div></div>`;
