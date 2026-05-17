@@ -437,7 +437,12 @@ window.addEventListener('DOMContentLoaded', ()=>{
   cfg={key:SAVED_KEY,secret:SAVED_SECRET};
   document.getElementById('setup-screen').style.display='none';
   bindEvents();
-  loadProducts().then(function(){setSyncStatus('green','已連線 · '+allProducts.length+' 件商品');});
+  loadProducts().then(function(){
+  if(allProducts.length>0){
+    setSyncStatus('green','已連線 · '+allProducts.length+' 件商品');
+  } else {
+    setSyncStatus('yellow','連線失敗，請按重載');
+  }
 });
 
 async function autoConnect(key,secret) {
@@ -539,7 +544,7 @@ async function loadProducts() {
       });
       allProducts.push(...data);
       if(data.length<100)break; pg++;
-    } catch(e){break;}
+    } catch(e){setSyncStatus('yellow','連線失敗，重試中…');break;}
   }
   const cm={};
   allProducts.forEach(p=>p.categories.forEach(c=>cm[c.id]=c.name));
