@@ -527,7 +527,7 @@ async function loadProducts() {
   while(true) {
     document.getElementById('loading-sub').textContent=`已載入 ${allProducts.length} 件…`;
     try {
-      const r=await wcGet(`products?per_page=100&page=${pg}&status=publish`);
+     const r=await wcGet(`products?per_page=100&page=${pg}&status=publish&_fields=id,name,sku,price,images,categories,manage_stock,stock_quantity,meta_data`);
       if(!r.ok)break;
       const data=await r.json(); if(!data.length)break;
       data.forEach(p=>{
@@ -601,13 +601,17 @@ else{grid.querySelectorAll('.load-more-btn').forEach(e=>e.remove());}
   slice.forEach(p=>grid.appendChild(mkPCard(p)));
   const old=grid.querySelector('.load-more-btn');if(old)old.remove();
   if(end<filteredProducts.length){
-    const btn=document.createElement('button');
-    btn.className='load-more-btn';
-    btn.style.cssText='grid-column:1/-1;padding:10px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:8px;cursor:pointer;font-size:.85rem;color:var(--text2);font-weight:600;';
-    btn.textContent='載入更多（還有'+(filteredProducts.length-end)+'件）';
-    btn.onclick=function(){currentPage++;renderProds(false);};
-    grid.appendChild(btn);
-  }
+  const sentinel=document.createElement('div');
+  sentinel.className='load-more-btn';
+  sentinel.style.cssText='grid-column:1/-1;height:40px;';
+  grid.appendChild(sentinel);
+  new IntersectionObserver((entries,obs)=>{
+    if(entries[0].isIntersecting){
+      obs.disconnect();
+      currentPage++;
+      renderProds(false);
+    }
+  },{threshold:0.1}).observe(sentinel);
 }
 function mkPCard(p){
   const inCart=cart.find(c=>c.product.id===p.id);
