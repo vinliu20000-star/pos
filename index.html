@@ -420,6 +420,7 @@ const TIERS = [
 let cfg = {key:'',secret:''};
 let allProducts=[], filteredProducts=[], categories=[];
 let cart=[], member=null, redeemPts=0, discPct=0, currentCat=0, demoMode=false;
+  const PAGE_SIZE=30; let currentPage=0;
 
 // ═══════════════════════════════════════════
 // CLOCK
@@ -589,11 +590,23 @@ function filterProds(q,catId){
   });
   renderProds();
 }
-function renderProds(){
+function renderProds(reset=true){
   const grid=document.getElementById('product-grid');
-  grid.querySelectorAll('.pcard').forEach(e=>e.remove());
+  if(reset){currentPage=0;grid.querySelectorAll('.pcard,.load-more-btn').forEach(e=>e.remove());}
   document.getElementById('no-products').style.display=filteredProducts.length?'none':'block';
-  filteredProducts.forEach(p=>grid.appendChild(mkPCard(p)));
+  const start=currentPage*PAGE_SIZE;
+  const end=start+PAGE_SIZE;
+  const slice=filteredProducts.slice(start,end);
+  slice.forEach(p=>grid.appendChild(mkPCard(p)));
+  const old=grid.querySelector('.load-more-btn');if(old)old.remove();
+  if(end<filteredProducts.length){
+    const btn=document.createElement('button');
+    btn.className='load-more-btn';
+    btn.style.cssText='grid-column:1/-1;padding:10px;background:var(--surface2);border:1.5px solid var(--border2);border-radius:8px;cursor:pointer;font-size:.85rem;color:var(--text2);font-weight:600;';
+    btn.textContent='載入更多（還有'+(filteredProducts.length-end)+'件）';
+    btn.onclick=function(){currentPage++;renderProds(false);};
+    grid.appendChild(btn);
+  }
 }
 function mkPCard(p){
   const inCart=cart.find(c=>c.product.id===p.id);
