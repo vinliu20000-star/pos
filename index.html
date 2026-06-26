@@ -97,19 +97,19 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 #cat-bar::-webkit-scrollbar { display: none; }
 .cat-chip { padding: 5px 14px; border-radius: 20px; border: 1.5px solid var(--border2); background: transparent; color: var(--text2); font-size: .78rem; cursor: pointer; white-space: nowrap; transition: all .15s; font-weight: 500; }
 .cat-chip.active { background: var(--accent); border-color: var(--accent); color: white; }
-#product-grid { flex: 1; overflow-y: auto; padding: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; align-content: start; }
+#product-grid { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); grid-auto-rows: max-content; gap: 9px; align-content: start; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 #product-grid::-webkit-scrollbar { width: 4px; }
 #product-grid::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
-.pcard { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: border-color .15s, transform .1s, box-shadow .15s; display: flex; flex-direction: column; user-select: none; overflow: hidden; position: relative; box-shadow: var(--shadow); }
+.pcard { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: border-color .15s, transform .1s, box-shadow .15s; display: flex; flex-direction: column; user-select: none; overflow: hidden; position: relative; box-shadow: var(--shadow); min-height: 190px; }
 .pcard:hover { border-color: var(--accent-mid); box-shadow: var(--shadow-md); }
 .pcard:active { transform: scale(.97); }
 .pcard.added { border-color: var(--green) !important; animation: addFlash .35s ease; }
 @keyframes addFlash { 0%{background:var(--green-light)} 100%{background:var(--surface)} }
-.pimg { width: 100%; aspect-ratio: 1; background: var(--surface3); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.pimg { width: 100%; height: clamp(92px, 10.5vw, 128px); flex: 0 0 clamp(92px, 10.5vw, 128px); background: var(--surface3); display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .pimg img { width: 100%; height: 100%; object-fit: cover; transition: transform .2s; }
 .pcard:hover .pimg img { transform: scale(1.04); }
 .pimg-ph { font-size: 2.2rem; color: var(--border2); }
-.pinfo { padding: 8px; display: flex; flex-direction: column; gap: 3px; }
+.pinfo { padding: 8px; display: flex; flex-direction: column; gap: 3px; flex: 1; min-height: 0; }
 .pname { font-size: .78rem; font-weight: 500; line-height: 1.35; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.1em; }
 .psku { font-size: .68rem; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
 .pprice { font-size: .95rem; font-weight: 700; color: var(--green); font-family: 'JetBrains Mono', monospace; }
@@ -118,6 +118,18 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 .pcard.out { opacity: .4; pointer-events: none; }
 .in-cart-badge { position: absolute; top: 6px; right: 6px; background: var(--accent); color: white; font-size: .65rem; font-weight: 700; padding: 2px 6px; border-radius: 10px; font-family: 'JetBrains Mono', monospace; }
 #no-products { display: none; grid-column: 1/-1; color: var(--text3); font-size: .9rem; text-align: center; padding: 60px 0; }
+@media (max-height: 760px) {
+  #product-grid { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 7px; }
+  .pcard { min-height: 174px; }
+  .pimg { height: 92px; flex-basis: 92px; }
+  .pinfo { padding: 7px; gap: 2px; }
+  .pname { font-size: .74rem; }
+  .pprice { font-size: .9rem; }
+}
+@media (min-height: 900px) {
+  .pcard { min-height: 210px; }
+  .pimg { height: 132px; flex-basis: 132px; }
+}
 
 /* ══ RIGHT ══ */
 #right-panel { width: 340px; display: flex; flex-direction: column; flex-shrink: 0; background: var(--surface); }
