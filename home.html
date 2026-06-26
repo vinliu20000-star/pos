@@ -133,6 +133,7 @@ header {
 .tile-txn   { background: linear-gradient(135deg, #059669, #047857); }
 .tile-prod  { background: linear-gradient(135deg, #7c3aed, #6d28d9); }
 .tile-refund{ background: linear-gradient(135deg, #ea580c, #c2410c); }
+.tile-period{ background: linear-gradient(135deg, #0f766e, #115e59); }
 
 /* Badge */
 .tile-badge {
@@ -233,6 +234,56 @@ header {
 .pay-detail-title { font-weight: 800; color: #f59e0b; font-size: .85rem; }
 .pay-line { display: flex; justify-content: space-between; font-size: .78rem; color: rgba(255,255,255,.65); gap: 12px; }
 .pay-line strong { font-family: 'JetBrains Mono', monospace; color: #34d399; white-space: nowrap; }
+.period-tools {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.period-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.period-btn {
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 8px;
+  color: rgba(255,255,255,.8);
+  padding: 8px 6px;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.period-btn:active { transform: scale(.97); }
+.period-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.period-field { display: flex; flex-direction: column; gap: 5px; }
+.period-field label { font-size: .72rem; color: rgba(255,255,255,.5); }
+.period-field input {
+  background: rgba(0,0,0,.22);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 8px;
+  color: white;
+  padding: 8px 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.period-search {
+  background: #f59e0b;
+  border: none;
+  border-radius: 8px;
+  color: #111827;
+  font-weight: 900;
+  padding: 10px;
+  cursor: pointer;
+}
+.day-detail {
+  background: rgba(255,255,255,.035);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+.day-title { display:flex; justify-content:space-between; font-weight:800; color:#f59e0b; font-size:.82rem; margin-bottom:6px; }
+.day-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:5px; font-size:.72rem; color:rgba(255,255,255,.62); }
+.day-grid strong { display:block; font-family:'JetBrains Mono', monospace; color:#34d399; font-size:.78rem; margin-top:2px; }
 
 /* Loading spinner in modal */
 .modal-spinner {
@@ -334,6 +385,13 @@ header {
     <div class="tile-label">退貨處理</div>
     <div class="tile-sub">保留銷售紀錄</div>
   </div>
+
+  <!-- 期間報表 -->
+  <div class="tile tile-period" onclick="openPeriod()">
+    <div class="tile-icon">🗓️</div>
+    <div class="tile-label">期間報表</div>
+    <div class="tile-sub">最多查 3 個月</div>
+  </div>
 </div>
 
 <!-- Daily Stats Modal -->
@@ -373,6 +431,14 @@ header {
   <div class="modal">
     <div class="modal-title">📦 日商品統計<button class="modal-close" onclick="closeModal('prod-modal')">關閉</button></div>
     <div class="modal-body" id="prod-body"><div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div></div>
+  </div>
+</div>
+
+<!-- Period Report Modal -->
+<div class="modal-overlay" id="period-modal">
+  <div class="modal">
+    <div class="modal-title">🗓️ 期間收款報表<button class="modal-close" onclick="closeModal('period-modal')">關閉</button></div>
+    <div class="modal-body" id="period-body"></div>
   </div>
 </div>
 
@@ -437,11 +503,46 @@ function todayKey() {
   const d = String(today.getDate()).padStart(2,'0');
   return `${y}-${m}-${d}`;
 }
+function dateKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function addDays(dateStr, days) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  d.setDate(d.getDate()+days);
+  return dateKey(d);
+}
+function addMonths(date, months) {
+  const d = new Date(date);
+  d.setMonth(d.getMonth()+months);
+  return d;
+}
+function monthRange(offset=0) {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth()+offset, 1);
+  const last = new Date(now.getFullYear(), now.getMonth()+offset+1, 0);
+  return { start: dateKey(first), end: dateKey(last > now ? now : last) };
+}
 async function getTodayOrders(status='completed,processing') {
   const dateStr = todayKey();
   const r = await wcGet(`orders?after=${dateStr}T00:00:00&before=${dateStr}T23:59:59&per_page=100&status=${status}`);
   if (!r.ok) return [];
   return await r.json();
+}
+async function getRangeOrders(start, end, status='completed,processing') {
+  let page = 1, all = [];
+  while (page <= 10) {
+    const path = `orders?after=${start}T00:00:00&before=${end}T23:59:59&per_page=100&page=${page}&status=${status}`;
+    const r = await wcGet(path);
+    if (!r.ok) break;
+    const data = await r.json();
+    all = all.concat(data);
+    if (data.length < 100) break;
+    page++;
+  }
+  return all;
 }
 const PAYMENT_LABELS = { cash:'現金', line_pay:'Line Pay', taiwan_pay:'台灣 Pay' };
 function orderPayKey(o) {
@@ -470,9 +571,18 @@ function summarizeOrders(orders) {
 }
 function paymentDetailHtml(title, group) {
   const rows = group.orders.length
-    ? group.orders.map(o => `<div class="pay-line"><span>#${o.id} · ${new Date(o.date_created).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}</span><strong>$${Number(o.total).toLocaleString()}</strong></div>`).join('')
-    : '<div class="pay-line"><span>今日沒有此付款方式</span><strong>$0</strong></div>';
+    ? group.orders.map(o => `<div class="pay-line"><span>#${o.id} · ${new Date(o.date_created).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</span><strong>$${Number(o.total).toLocaleString()}</strong></div>`).join('')
+    : '<div class="pay-line"><span>沒有此付款方式</span><strong>$0</strong></div>';
   return `<div class="pay-detail"><div class="pay-detail-title">${title}｜${group.count} 筆｜$${group.total.toLocaleString()}</div>${rows}</div>`;
+}
+function groupOrdersByDay(orders) {
+  const days = {};
+  orders.forEach(o => {
+    const key = (o.date_created || '').slice(0,10) || todayKey();
+    if (!days[key]) days[key] = [];
+    days[key].push(o);
+  });
+  return Object.entries(days).sort((a,b)=>b[0].localeCompare(a[0]));
 }
 
 // Daily Stats
@@ -665,6 +775,98 @@ async function openProd() {
         </div>`).join('')}`;
   } catch(e) {
     body.innerHTML = '<div class="modal-spinner">載入失敗</div>';
+  }
+}
+
+// Period payment report
+function openPeriod() {
+  document.getElementById('period-modal').classList.add('show');
+  const body = document.getElementById('period-body');
+  const r = monthRange(0);
+  body.innerHTML = `
+    <div class="period-tools">
+      <div class="period-presets">
+        <button class="period-btn" onclick="setPeriodPreset('today')">今天</button>
+        <button class="period-btn" onclick="setPeriodPreset('yesterday')">昨天</button>
+        <button class="period-btn" onclick="setPeriodPreset('week')">近 7 天</button>
+        <button class="period-btn" onclick="setPeriodPreset('month')">本月</button>
+        <button class="period-btn" onclick="setPeriodPreset('lastmonth')">上個月</button>
+        <button class="period-btn" onclick="setPeriodPreset('three')">近 3 個月</button>
+      </div>
+      <div class="period-dates">
+        <div class="period-field"><label>開始日期</label><input type="date" id="period-start" value="${r.start}"></div>
+        <div class="period-field"><label>結束日期</label><input type="date" id="period-end" value="${r.end}"></div>
+      </div>
+      <button class="period-search" onclick="runPeriodReport()">查詢收款狀況</button>
+      <div style="font-size:.75rem;color:rgba(255,255,255,.45);line-height:1.5;">為了避免查詢太慢，POS 最多查最近 3 個月。已退貨 / 作廢訂單不列入收款總額。</div>
+    </div>
+    <div id="period-result"><div class="modal-spinner" style="padding:18px;color:rgba(255,255,255,.35)">選好日期後按查詢</div></div>
+  `;
+  runPeriodReport();
+}
+function setPeriodPreset(type) {
+  const today = todayKey();
+  let start = today, end = today;
+  if (type === 'yesterday') { start = end = addDays(today, -1); }
+  if (type === 'week') start = addDays(today, -6);
+  if (type === 'month') { const r = monthRange(0); start = r.start; end = r.end; }
+  if (type === 'lastmonth') { const r = monthRange(-1); start = r.start; end = r.end; }
+  if (type === 'three') start = dateKey(addMonths(new Date(), -3));
+  document.getElementById('period-start').value = start;
+  document.getElementById('period-end').value = end;
+  runPeriodReport();
+}
+function validatePeriod(start, end) {
+  const today = todayKey();
+  const min = dateKey(addMonths(new Date(), -3));
+  if (!start || !end) return '請先選擇開始與結束日期';
+  if (start > end) return '開始日期不能晚於結束日期';
+  if (end > today) return '結束日期不能超過今天';
+  if (start < min) return '最多只能查最近 3 個月';
+  return '';
+}
+async function runPeriodReport() {
+  const start = document.getElementById('period-start')?.value;
+  const end = document.getElementById('period-end')?.value;
+  const result = document.getElementById('period-result');
+  const err = validatePeriod(start, end);
+  if (err) {
+    result.innerHTML = `<div class="modal-spinner" style="padding:22px;color:#f87171">${err}</div>`;
+    return;
+  }
+  result.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>查詢中…</div></div>';
+  try {
+    const orders = await getRangeOrders(start, end, 'completed,processing');
+    const summary = summarizeOrders(orders);
+    const avgOrder = orders.length ? Math.round(summary.total/orders.length) : 0;
+    const dayHtml = groupOrdersByDay(orders).map(([day, list]) => {
+      const s = summarizeOrders(list);
+      return `<div class="day-detail">
+        <div class="day-title"><span>${day}</span><span>${list.length} 筆｜$${s.total.toLocaleString()}</span></div>
+        <div class="day-grid">
+          <span>現金<strong>$${s.by.cash.total.toLocaleString()}</strong></span>
+          <span>Line Pay<strong>$${s.by.line_pay.total.toLocaleString()}</strong></span>
+          <span>台灣 Pay<strong>$${s.by.taiwan_pay.total.toLocaleString()}</strong></span>
+        </div>
+      </div>`;
+    }).join('');
+    result.innerHTML = `
+      <div class="stats-row"><span class="sk">📅 查詢期間</span><span class="sv">${start} ～ ${end}</span></div>
+      <div class="stats-row"><span class="sk">💰 總收款</span><span class="sv">$${summary.total.toLocaleString()}</span></div>
+      <div class="stats-row"><span class="sk">🧾 訂單數</span><span class="sv">${orders.length} 筆</span></div>
+      <div class="stats-row"><span class="sk">📦 銷售件數</span><span class="sv">${summary.items} 件</span></div>
+      <div class="stats-row"><span class="sk">💵 現金</span><span class="sv">$${summary.by.cash.total.toLocaleString()}</span></div>
+      <div class="stats-row"><span class="sk">🟢 Line Pay</span><span class="sv">$${summary.by.line_pay.total.toLocaleString()}</span></div>
+      <div class="stats-row"><span class="sk">🟠 台灣 Pay</span><span class="sv">$${summary.by.taiwan_pay.total.toLocaleString()}</span></div>
+      ${summary.by.other.count ? `<div class="stats-row"><span class="sk">❔ 其他付款</span><span class="sv">$${summary.by.other.total.toLocaleString()}</span></div>` : ''}
+      <div class="stats-row"><span class="sk">📊 平均客單價</span><span class="sv">$${avgOrder.toLocaleString()}</span></div>
+      ${orders.length ? `<div class="stats-row header"><span class="sk">每日收款</span><span class="sv">付款方式小計</span></div>${dayHtml}` : '<div class="modal-spinner" style="padding:20px">此期間沒有收款訂單</div>'}
+      ${paymentDetailHtml('💵 現金每筆', summary.by.cash)}
+      ${paymentDetailHtml('🟢 Line Pay 每筆', summary.by.line_pay)}
+      ${paymentDetailHtml('🟠 台灣 Pay 每筆', summary.by.taiwan_pay)}
+    `;
+  } catch(e) {
+    result.innerHTML = '<div class="modal-spinner">查詢失敗，請確認網路或稍後再試</div>';
   }
 }
 
