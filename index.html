@@ -197,6 +197,17 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 .ri:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-mid); }
 .rrow { display: flex; gap: 8px; }
 .cash-label { font-size: .72rem; color: var(--text2); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+.pay-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.pay-option { background: var(--surface2); border: 1.5px solid var(--border); border-radius: 9px; padding: 10px 6px; cursor: pointer; color: var(--text2); font-weight: 800; font-family: 'Noto Sans TC', sans-serif; transition: all .15s; }
+.pay-option.active { background: var(--accent-light); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 3px var(--accent-mid); }
+.pay-option.line.active { background: #ecfdf5; border-color: #06c755; color: #047857; box-shadow: 0 0 0 3px #bbf7d0; }
+.pay-option.twpay.active { background: #fff7ed; border-color: #f97316; color: #c2410c; box-shadow: 0 0 0 3px #fed7aa; }
+#cash-panel, #noncash-panel { display: flex; flex-direction: column; gap: 10px; }
+.pay-check-card { background: var(--accent-light); border: 1.5px solid var(--accent-mid); border-radius: 9px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.pay-check-title { font-weight: 800; color: var(--accent); }
+.pay-check-amount { font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; font-weight: 900; color: var(--green); text-align: center; }
+.pay-confirm-row { display: flex; gap: 8px; align-items: flex-start; font-size: .82rem; color: var(--text2); line-height: 1.45; cursor: pointer; }
+.pay-confirm-row input { width: 18px; height: 18px; margin-top: 1px; accent-color: var(--green); flex-shrink: 0; }
 #cash-input { width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: 8px; padding: 10px 14px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 1.4rem; font-weight: 700; outline: none; text-align: right; transition: border-color .2s; }
 #cash-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-mid); }
 .numpad { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; }
@@ -357,20 +368,41 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 <!-- CHECKOUT MODAL -->
 <div class="overlay" id="checkout-overlay">
   <div class="modal">
-    <div class="mtitle">💰 現金結帳</div>
+    <div class="mtitle" id="checkout-title">💰 結帳收款</div>
     <div class="mrow"><span class="ml">商品小計</span><span class="mr" id="m-sub"></span></div>
     <div class="mrow" id="m-td-row" style="display:none"><span class="ml">等級折扣</span><span class="mr" id="m-td" style="color:var(--red)"></span></div>
     <div class="mrow" id="m-pd-row" style="display:none"><span class="ml">點數折抵</span><span class="mr" id="m-pd" style="color:var(--red)"></span></div>
     <div class="mdiv"></div>
     <div class="mrow big"><span class="ml">應收金額</span><span class="mr" id="m-tot"></span></div>
-    <div><div class="cash-label">收取現金</div><input type="number" id="cash-input" placeholder="0" oninput="calcChange()" readonly></div>
-    <div class="numpad">
-      <button class="np" onclick="np('1')">1</button><button class="np" onclick="np('2')">2</button><button class="np" onclick="np('3')">3</button>
-      <button class="np" onclick="np('4')">4</button><button class="np" onclick="np('5')">5</button><button class="np" onclick="np('6')">6</button>
-      <button class="np" onclick="np('7')">7</button><button class="np" onclick="np('8')">8</button><button class="np" onclick="np('9')">9</button>
-      <button class="np del" onclick="npDel()">⌫</button><button class="np zero" onclick="np('0')">0</button>
+    <div>
+      <div class="cash-label">付款方式</div>
+      <div class="pay-options">
+        <button class="pay-option active" id="pay-cash" onclick="setPaymentMethod('cash')">💵 現金</button>
+        <button class="pay-option line" id="pay-line_pay" onclick="setPaymentMethod('line_pay')">🟢 Line Pay</button>
+        <button class="pay-option twpay" id="pay-taiwan_pay" onclick="setPaymentMethod('taiwan_pay')">🟠 台灣 Pay</button>
+      </div>
     </div>
-    <div class="change-box"><div class="change-label">找零</div><div id="change-display">—</div></div>
+    <div id="cash-panel">
+      <div><div class="cash-label">收取現金</div><input type="number" id="cash-input" placeholder="0" oninput="calcChange()" readonly></div>
+      <div class="numpad">
+        <button class="np" onclick="np('1')">1</button><button class="np" onclick="np('2')">2</button><button class="np" onclick="np('3')">3</button>
+        <button class="np" onclick="np('4')">4</button><button class="np" onclick="np('5')">5</button><button class="np" onclick="np('6')">6</button>
+        <button class="np" onclick="np('7')">7</button><button class="np" onclick="np('8')">8</button><button class="np" onclick="np('9')">9</button>
+        <button class="np del" onclick="npDel()">⌫</button><button class="np zero" onclick="np('0')">0</button>
+      </div>
+      <div class="change-box"><div class="change-label">找零</div><div id="change-display">—</div></div>
+    </div>
+    <div id="noncash-panel" style="display:none">
+      <div class="pay-check-card">
+        <div class="pay-check-title" id="pay-check-title">請確認付款畫面</div>
+        <div class="pay-check-amount" id="pay-check-amount">$0</div>
+        <input class="ri" type="text" id="payment-ref" placeholder="輸入交易序號 / 末五碼（選填）" oninput="calcChange()">
+        <label class="pay-confirm-row">
+          <input type="checkbox" id="payment-confirmed" onchange="calcChange()">
+          <span>我已核對顧客手機付款成功畫面，金額與 POS 應收金額一致。</span>
+        </label>
+      </div>
+    </div>
     <div class="brow">
       <button class="bcancel" onclick="closeOverlay('checkout-overlay')">取消</button>
       <button class="bok" id="confirm-btn" onclick="confirmCheckout()" disabled>確認收款</button>
@@ -405,6 +437,11 @@ const SPEND_YR_KEY = '_cbt77_yrear';    // 消費年份（自訂）
 const BDAY_KEY     = '_cbt77_birthday'; // 生日（自訂）
 const PTS_PER_100  = 1;                 // 每 $100 得 1 點
 const PTS_VALUE    = 1;                 // 1點 = $1
+const PAYMENT_METHODS = {
+  cash:       { title:'現金', icon:'💵' },
+  line_pay:   { title:'Line Pay', icon:'🟢' },
+  taiwan_pay: { title:'台灣 Pay', icon:'🟠' },
+};
 
 const TIERS = [
   { key:'customer',    label:'粉絲', color:'#6b7280', bg:'#f3f4f6', single:99,   yearly:0     },
@@ -420,6 +457,7 @@ const TIERS = [
 let cfg = {key:'',secret:''};
 let allProducts=[], filteredProducts=[], categories=[];
 let cart=[], member=null, redeemPts=0, discPct=0, currentCat=0, demoMode=false;
+let checkoutPaymentMethod='cash';
   const PAGE_SIZE=30; let currentPage=0;
 
 // ═══════════════════════════════════════════
@@ -879,31 +917,66 @@ function openCheckout(){
   document.getElementById('m-tot').textContent=`$${tot.toLocaleString()}`;
   document.getElementById('m-td-row').style.display=td>0?'flex':'none';
   document.getElementById('m-pd-row').style.display=pd>0?'flex':'none';
+  setPaymentMethod('cash');
   document.getElementById('cash-input').value='';
+  document.getElementById('payment-ref').value='';
+  document.getElementById('payment-confirmed').checked=false;
   document.getElementById('change-display').textContent='—';
   document.getElementById('change-display').className='';
   document.getElementById('confirm-btn').disabled=true;
   document.getElementById('checkout-overlay').classList.add('show');
 }
 function closeOverlay(id){document.getElementById(id).classList.remove('show');}
+function setPaymentMethod(method){
+  const changed=checkoutPaymentMethod!==method;
+  checkoutPaymentMethod=method;
+  const pm=PAYMENT_METHODS[method]||PAYMENT_METHODS.cash;
+  if(changed){
+    document.getElementById('payment-ref').value='';
+    document.getElementById('payment-confirmed').checked=false;
+  }
+  document.querySelectorAll('.pay-option').forEach(b=>b.classList.remove('active'));
+  const btn=document.getElementById('pay-'+method);
+  if(btn)btn.classList.add('active');
+  document.getElementById('checkout-title').textContent=`${pm.icon} ${pm.title}結帳`;
+  document.getElementById('cash-panel').style.display=method==='cash'?'flex':'none';
+  document.getElementById('noncash-panel').style.display=method==='cash'?'none':'flex';
+  document.getElementById('pay-check-title').textContent=`請核對 ${pm.title} 付款成功畫面`;
+  document.getElementById('pay-check-amount').textContent=`$${getTotal().toLocaleString()}`;
+  calcChange();
+}
 function np(d){const i=document.getElementById('cash-input');i.value=i.value===''?d:i.value+d;calcChange();}
 function npDel(){const i=document.getElementById('cash-input');i.value=i.value.slice(0,-1);calcChange();}
 function calcChange(){
+  const confirmBtn=document.getElementById('confirm-btn');
+  if(checkoutPaymentMethod!=='cash'){
+    const ok=document.getElementById('payment-confirmed').checked;
+    document.getElementById('pay-check-amount').textContent=`$${getTotal().toLocaleString()}`;
+    confirmBtn.disabled=!ok;
+    return;
+  }
   const cash=parseFloat(document.getElementById('cash-input').value)||0;
   const tot=getTotal(),chg=cash-tot;
   const el=document.getElementById('change-display'),inp=document.getElementById('cash-input');
   if(!inp.value){el.textContent='—';el.className='';}
   else if(chg>=0){el.textContent=`$${chg.toLocaleString()}`;el.className='';}
   else{el.textContent=`-$${Math.abs(chg).toLocaleString()}`;el.className='neg';}
-  document.getElementById('confirm-btn').disabled=cash<tot||!inp.value;
+  confirmBtn.disabled=cash<tot||!inp.value;
 }
 
 // ═══════════════════════════════════════════
 // CONFIRM CHECKOUT — 寫回 _viter_points
 // ═══════════════════════════════════════════
 async function confirmCheckout(){
-  const cash=parseFloat(document.getElementById('cash-input').value)||0;
-  const tot=getTotal(),chg=cash-tot,sub=getSub();
+  const payment=PAYMENT_METHODS[checkoutPaymentMethod]||PAYMENT_METHODS.cash;
+  const isCash=checkoutPaymentMethod==='cash';
+  const cash=isCash?(parseFloat(document.getElementById('cash-input').value)||0):getTotal();
+  const tot=getTotal(),chg=isCash?cash-tot:0,sub=getSub();
+  const paymentRef=(document.getElementById('payment-ref').value||'').trim();
+  if(!isCash&&!document.getElementById('payment-confirmed').checked){
+    toast('請先確認付款成功畫面','err');
+    return;
+  }
   closeOverlay('checkout-overlay');
 
   if(demoMode){
@@ -915,7 +988,7 @@ async function confirmCheckout(){
       const nt=calcNewTier(member.role,sub,ny);
       if(nt.key!==member.role)upgraded=nt;
     }
-    showSuccess({id:Math.floor(Math.random()*9000)+1000,total:tot,change:chg,earned,upgraded});
+    showSuccess({id:Math.floor(Math.random()*9000)+1000,total:tot,change:chg,earned,upgraded,payment:payment.title,paymentRef});
     return;
   }
 
@@ -926,13 +999,17 @@ async function confirmCheckout(){
     if(redeemPts>0)feeLines.push({name:`點數折抵（${redeemPts}點）`,total:String(-(redeemPts*PTS_VALUE))});
 
     const orderBody={
-      status:'completed',payment_method:'cash',payment_method_title:'現金',set_paid:true,
+      status:'completed',payment_method:checkoutPaymentMethod,payment_method_title:payment.title,set_paid:true,
       line_items:cart.map(c=>({product_id:c.product.id,quantity:c.qty})),
       fee_lines:feeLines,
       meta_data:[
+        {key:'_pos_payment_method',value:checkoutPaymentMethod},
+        {key:'_pos_payment_title',value:payment.title},
+        {key:'_pos_payment_ref',value:paymentRef},
+        {key:'_pos_payment_confirmed_at',value:new Date().toISOString()},
         {key:'_pos_cash',value:String(cash)},
         {key:'_pos_change',value:String(chg)},
-        {key:'_pos_terminal',value:'CBT77 POS v4'},
+        {key:'_pos_terminal',value:'CBT77 POS v5'},
       ]
     };
     if(member)orderBody.customer_id=member.id;
@@ -978,7 +1055,7 @@ async function confirmCheckout(){
 
     hideLoad();
     if(!r.ok){toast('訂單失敗：'+(order.message||''),'err');return;}
-    showSuccess({id:order.id,total:tot,change:chg,earned,upgraded});
+    showSuccess({id:order.id,total:tot,change:chg,earned,upgraded,payment:payment.title,paymentRef});
   } catch(e){hideLoad();toast('網路錯誤，請重試','err');}
 }
 
@@ -991,8 +1068,10 @@ function showSuccess(data){
   }else ub.style.display='none';
   let html=`
     <div class="orow"><span class="ok2">訂單編號</span><span class="ov">#${data.id}</span></div>
+    <div class="orow"><span class="ok2">付款方式</span><span class="ov">${data.payment||'現金'}</span></div>
     <div class="orow"><span class="ok2">應收金額</span><span class="ov">$${Number(data.total).toLocaleString()}</span></div>
     <div class="orow"><span class="ok2">找　零</span><span class="ov">$${Number(data.change).toLocaleString()}</span></div>`;
+  if(data.paymentRef)html+=`<div class="orow"><span class="ok2">交易序號</span><span class="ov">${data.paymentRef}</span></div>`;
   if(data.earned>0)html+=`<div class="orow"><span class="ok2">獲得點數</span><span class="ov" style="color:var(--green)">+${data.earned} 點</span></div>`;
   if(redeemPts>0)html+=`<div class="orow"><span class="ok2">折抵點數</span><span class="ov" style="color:var(--red)">-${redeemPts} 點</span></div>`;
   document.getElementById('order-badge').innerHTML=html;
