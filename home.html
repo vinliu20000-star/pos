@@ -476,7 +476,7 @@ setInterval(updateClock, 1000); updateClock();
 // Today bar
 async function loadTodayStats() {
   try {
-    const orders = await getTodayOrders('completed,processing');
+    const orders = (await getTodayOrders('completed,processing')).filter(isPosOrder);
     const totals = summarizeOrders(orders);
     document.getElementById('bar-revenue').textContent = `$${totals.total.toLocaleString()}`;
     document.getElementById('bar-orders').textContent = orders.length || 0;
@@ -545,12 +545,42 @@ async function getRangeOrders(start, end, status='completed,processing') {
   return all;
 }
 const PAYMENT_LABELS = { cash:'現金', line_pay:'Line Pay', taiwan_pay:'台灣 Pay' };
+function metaValue(o, key) {
+  return (o.meta_data || []).find(m => m.key === key)?.value;
+}
+function isPosOrder(o) {
+  return !!(
+    metaValue(o, '_pos_terminal') ||
+    metaValue(o, '_pos_payment_method') ||
+    metaValue(o, '_pos_cash') ||
+    metaValue(o, '_pos_change')
+  );
+}
+function isWebsiteOrder(o) {
+  return !isPosOrder(o);
+}
+function isWebsitePaidOrder(o) {
+  return isWebsiteOrder(o) && !!(o.date_paid || o.date_completed || o.status === 'completed');
+}
+function reportDateKey(o) {
+  const source = isWebsiteOrder(o)
+    ? (o.date_paid || o.date_completed || o.date_modified || o.date_created)
+    : o.date_created;
+  return (source || '').slice(0,10) || todayKey();
+}
+function filterReportRange(orders, start, end) {
+  return orders.filter(o => {
+    if (isWebsiteOrder(o) && !isWebsitePaidOrder(o)) return false;
+    const d = reportDateKey(o);
+    return d >= start && d <= end;
+  });
+}
 function orderPayKey(o) {
-  const meta = o.meta_data || [];
-  const saved = meta.find(m => m.key === '_pos_payment_method')?.value;
+  const saved = metaValue(o, '_pos_payment_method');
   return saved || o.payment_method || 'unknown';
 }
 function orderPayLabel(o) {
+  if (isWebsiteOrder(o)) return '官網訂單';
   const key = orderPayKey(o);
   return PAYMENT_LABELS[key] || o.payment_method_title || key || '未記錄';
 }
@@ -578,7 +608,7 @@ function paymentDetailHtml(title, group) {
 function groupOrdersByDay(orders) {
   const days = {};
   orders.forEach(o => {
-    const key = (o.date_created || '').slice(0,10) || todayKey();
+    const key = reportDateKey(o);
     if (!days[key]) days[key] = [];
     days[key].push(o);
   });
@@ -592,7 +622,7 @@ async function openDaily() {
   body.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div>';
   try {
     const today = todayKey();
-    const orders = await getTodayOrders('completed,processing');
+    const orders = (await getTodayOrders('completed,processing')).filter(isPosOrder);
     const summary = summarizeOrders(orders);
     const totalSales = summary.total;
     const totalOrders = orders.length;
@@ -624,7 +654,7 @@ async function openVoid() {
   const body = document.getElementById('void-body');
   body.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div>';
   try {
-    const orders = await getTodayOrders();
+    const orders = (await getTodayOrders()).filter(isPosOrder);
     if (!orders.length) { body.innerHTML = '<div class="modal-spinner">今日尚無訂單</div>'; return; }
     body.innerHTML = orders.map(o => `
       <div class="txn-item">
@@ -670,7 +700,7 @@ async function openRefund() {
   const body = document.getElementById('refund-body');
   body.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div>';
   try {
-    const orders = await getTodayOrders('completed,processing');
+    const orders = (await getTodayOrders('completed,processing')).filter(isPosOrder);
     if (!orders.length) { body.innerHTML = '<div class="modal-spinner">今日尚無可退貨訂單</div>'; return; }
     body.innerHTML = `
       <div style="font-size:.8rem;color:rgba(255,255,255,.55);line-height:1.6;background:rgba(255,255,255,.05);padding:10px 12px;border-radius:8px;">
@@ -733,7 +763,7 @@ async function openTxn() {
   try {
     const today = todayKey();
     const r = await wcGet(`orders?after=${today}T00:00:00&before=${today}T23:59:59&per_page=100`);
-    const orders = r.ok ? await r.json() : [];
+    const orders = r.ok ? (await r.json()).filter(isPosOrder) : [];
     if (!orders.length) { body.innerHTML = '<div class="modal-spinner">今日尚無交易</div>'; return; }
     body.innerHTML = orders.map(o => {
       const statusMap = {'completed':'✅ 完成','cancelled':'❌ 作廢','processing':'⏳ 處理中','refunded':'↩️ 已退貨'};
@@ -798,7 +828,7 @@ function openPeriod() {
         <div class="period-field"><label>結束日期</label><input type="date" id="period-end" value="${r.end}"></div>
       </div>
       <button class="period-search" onclick="runPeriodReport()">查詢收款狀況</button>
-      <div style="font-size:.75rem;color:rgba(255,255,255,.45);line-height:1.5;">為了避免查詢太慢，POS 最多查最近 3 個月。已退貨 / 作廢訂單不列入收款總額。</div>
+      <div style="font-size:.75rem;color:rgba(255,255,255,.45);line-height:1.5;">為了避免查詢太慢，POS 最多查最近 3 個月。門市收款只算 POS 訂單；官網訂單另列，不混進現金 / Line Pay / 台灣 Pay。官網訂單優先依付款確認日歸入日期。</div>
     </div>
     <div id="period-result"><div class="modal-spinner" style="padding:18px;color:rgba(255,255,255,.35)">選好日期後按查詢</div></div>
   `;
@@ -836,34 +866,52 @@ async function runPeriodReport() {
   }
   result.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>查詢中…</div></div>';
   try {
-    const orders = await getRangeOrders(start, end, 'completed,processing');
-    const summary = summarizeOrders(orders);
-    const avgOrder = orders.length ? Math.round(summary.total/orders.length) : 0;
-    const dayHtml = groupOrdersByDay(orders).map(([day, list]) => {
+    const fetchStart = dateKey(addMonths(new Date(`${start}T12:00:00`), -3));
+    const rawOrders = await getRangeOrders(fetchStart, end, 'completed,processing');
+    const orders = filterReportRange(rawOrders, start, end);
+    const posOrders = orders.filter(isPosOrder);
+    const websiteOrders = orders.filter(isWebsiteOrder);
+    const summary = summarizeOrders(posOrders);
+    const websiteSummary = summarizeOrders(websiteOrders);
+    const avgOrder = posOrders.length ? Math.round(summary.total/posOrders.length) : 0;
+    const dayHtml = groupOrdersByDay(posOrders).map(([day, list]) => {
       const s = summarizeOrders(list);
+      const web = websiteOrders.filter(o => reportDateKey(o) === day);
+      const ws = summarizeOrders(web);
       return `<div class="day-detail">
-        <div class="day-title"><span>${day}</span><span>${list.length} 筆｜$${s.total.toLocaleString()}</span></div>
+        <div class="day-title"><span>${day}</span><span>POS ${list.length} 筆｜$${s.total.toLocaleString()}</span></div>
         <div class="day-grid">
           <span>現金<strong>$${s.by.cash.total.toLocaleString()}</strong></span>
           <span>Line Pay<strong>$${s.by.line_pay.total.toLocaleString()}</strong></span>
           <span>台灣 Pay<strong>$${s.by.taiwan_pay.total.toLocaleString()}</strong></span>
+          ${web.length ? `<span>官網訂單<strong>$${ws.total.toLocaleString()}</strong></span>` : ''}
         </div>
       </div>`;
     }).join('');
+    const websiteOnlyDays = groupOrdersByDay(websiteOrders)
+      .filter(([day]) => !posOrders.some(o => reportDateKey(o) === day))
+      .map(([day, list]) => {
+        const ws = summarizeOrders(list);
+        return `<div class="day-detail">
+          <div class="day-title"><span>${day}</span><span>官網 ${list.length} 筆｜$${ws.total.toLocaleString()}</span></div>
+          <div class="day-grid"><span>官網訂單<strong>$${ws.total.toLocaleString()}</strong></span></div>
+        </div>`;
+      }).join('');
     result.innerHTML = `
       <div class="stats-row"><span class="sk">📅 查詢期間</span><span class="sv">${start} ～ ${end}</span></div>
-      <div class="stats-row"><span class="sk">💰 總收款</span><span class="sv">$${summary.total.toLocaleString()}</span></div>
-      <div class="stats-row"><span class="sk">🧾 訂單數</span><span class="sv">${orders.length} 筆</span></div>
+      <div class="stats-row"><span class="sk">💰 門市 POS 收款</span><span class="sv">$${summary.total.toLocaleString()}</span></div>
+      <div class="stats-row"><span class="sk">🧾 POS 訂單數</span><span class="sv">${posOrders.length} 筆</span></div>
       <div class="stats-row"><span class="sk">📦 銷售件數</span><span class="sv">${summary.items} 件</span></div>
       <div class="stats-row"><span class="sk">💵 現金</span><span class="sv">$${summary.by.cash.total.toLocaleString()}</span></div>
       <div class="stats-row"><span class="sk">🟢 Line Pay</span><span class="sv">$${summary.by.line_pay.total.toLocaleString()}</span></div>
       <div class="stats-row"><span class="sk">🟠 台灣 Pay</span><span class="sv">$${summary.by.taiwan_pay.total.toLocaleString()}</span></div>
-      ${summary.by.other.count ? `<div class="stats-row"><span class="sk">❔ 其他付款</span><span class="sv">$${summary.by.other.total.toLocaleString()}</span></div>` : ''}
+      ${websiteOrders.length ? `<div class="stats-row"><span class="sk">🌐 官網訂單</span><span class="sv">$${websiteSummary.total.toLocaleString()}｜${websiteOrders.length} 筆</span></div>` : ''}
       <div class="stats-row"><span class="sk">📊 平均客單價</span><span class="sv">$${avgOrder.toLocaleString()}</span></div>
-      ${orders.length ? `<div class="stats-row header"><span class="sk">每日收款</span><span class="sv">付款方式小計</span></div>${dayHtml}` : '<div class="modal-spinner" style="padding:20px">此期間沒有收款訂單</div>'}
+      ${(posOrders.length || websiteOrders.length) ? `<div class="stats-row header"><span class="sk">每日收款</span><span class="sv">付款方式小計</span></div>${dayHtml}${websiteOnlyDays}` : '<div class="modal-spinner" style="padding:20px">此期間沒有收款訂單</div>'}
       ${paymentDetailHtml('💵 現金每筆', summary.by.cash)}
       ${paymentDetailHtml('🟢 Line Pay 每筆', summary.by.line_pay)}
       ${paymentDetailHtml('🟠 台灣 Pay 每筆', summary.by.taiwan_pay)}
+      ${websiteOrders.length ? paymentDetailHtml('🌐 官網訂單每筆', {total:websiteSummary.total,count:websiteOrders.length,orders:websiteOrders}) : ''}
     `;
   } catch(e) {
     result.innerHTML = '<div class="modal-spinner">查詢失敗，請確認網路或稍後再試</div>';
