@@ -84,7 +84,7 @@ header {
 #grid {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(2, 1fr);
   gap: 12px;
   padding: 0 16px 16px;
@@ -132,6 +132,7 @@ header {
 .tile-void  { background: linear-gradient(135deg, #dc2626, #b91c1c); }
 .tile-txn   { background: linear-gradient(135deg, #059669, #047857); }
 .tile-prod  { background: linear-gradient(135deg, #7c3aed, #6d28d9); }
+.tile-refund{ background: linear-gradient(135deg, #ea580c, #c2410c); }
 
 /* Badge */
 .tile-badge {
@@ -220,6 +221,18 @@ header {
 }
 .txn-void-btn:hover { background: rgba(220,38,38,.4); }
 .txn-void-btn:disabled { opacity: .4; cursor: not-allowed; }
+.pay-detail {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.pay-detail-title { font-weight: 800; color: #f59e0b; font-size: .85rem; }
+.pay-line { display: flex; justify-content: space-between; font-size: .78rem; color: rgba(255,255,255,.65); gap: 12px; }
+.pay-line strong { font-family: 'JetBrains Mono', monospace; color: #34d399; white-space: nowrap; }
 
 /* Loading spinner in modal */
 .modal-spinner {
@@ -314,6 +327,13 @@ header {
     <div class="tile-label">日商品統計</div>
     <div class="tile-sub">商品銷售排行</div>
   </div>
+
+  <!-- 退貨處理 -->
+  <div class="tile tile-refund" onclick="openRefund()">
+    <div class="tile-icon">↩️</div>
+    <div class="tile-label">退貨處理</div>
+    <div class="tile-sub">保留銷售紀錄</div>
+  </div>
 </div>
 
 <!-- Daily Stats Modal -->
@@ -337,6 +357,14 @@ header {
   <div class="modal">
     <div class="modal-title">📋 交易明細<button class="modal-close" onclick="closeModal('txn-modal')">關閉</button></div>
     <div class="modal-body" id="txn-body"><div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div></div>
+  </div>
+</div>
+
+<!-- Refund Modal -->
+<div class="modal-overlay" id="refund-modal">
+  <div class="modal">
+    <div class="modal-title">↩️ 退貨處理<button class="modal-close" onclick="closeModal('refund-modal')">關閉</button></div>
+    <div class="modal-body" id="refund-body"><div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div></div>
   </div>
 </div>
 
@@ -382,15 +410,11 @@ setInterval(updateClock, 1000); updateClock();
 // Today bar
 async function loadTodayStats() {
   try {
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0];
-    const r = await wcGet(`reports/sales?date_min=${dateStr}&date_max=${dateStr}`);
-    if (!r.ok) return;
-    const data = await r.json();
-    const d = data[0] || {};
-    document.getElementById('bar-revenue').textContent = `$${Number(d.total_sales||0).toLocaleString()}`;
-    document.getElementById('bar-orders').textContent = d.total_orders || 0;
-    document.getElementById('bar-items').textContent = d.total_items || 0;
+    const orders = await getTodayOrders('completed,processing');
+    const totals = summarizeOrders(orders);
+    document.getElementById('bar-revenue').textContent = `$${totals.total.toLocaleString()}`;
+    document.getElementById('bar-orders').textContent = orders.length || 0;
+    document.getElementById('bar-items').textContent = totals.items || 0;
   } catch(e) {
     document.getElementById('bar-revenue').textContent = '—';
   }
@@ -406,12 +430,49 @@ function closeModal(id) {
 }
 
 // Today orders helper
-async function getTodayOrders() {
+function todayKey() {
   const today = new Date();
-  const dateStr = today.toISOString().split('T')[0];
-  const r = await wcGet(`orders?after=${dateStr}T00:00:00&before=${dateStr}T23:59:59&per_page=100&status=completed,processing`);
+  const y = today.getFullYear();
+  const m = String(today.getMonth()+1).padStart(2,'0');
+  const d = String(today.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+async function getTodayOrders(status='completed,processing') {
+  const dateStr = todayKey();
+  const r = await wcGet(`orders?after=${dateStr}T00:00:00&before=${dateStr}T23:59:59&per_page=100&status=${status}`);
   if (!r.ok) return [];
   return await r.json();
+}
+const PAYMENT_LABELS = { cash:'現金', line_pay:'Line Pay', taiwan_pay:'台灣 Pay' };
+function orderPayKey(o) {
+  const meta = o.meta_data || [];
+  const saved = meta.find(m => m.key === '_pos_payment_method')?.value;
+  return saved || o.payment_method || 'unknown';
+}
+function orderPayLabel(o) {
+  const key = orderPayKey(o);
+  return PAYMENT_LABELS[key] || o.payment_method_title || key || '未記錄';
+}
+function summarizeOrders(orders) {
+  const init = () => ({ total:0, count:0, orders:[] });
+  const by = { cash:init(), line_pay:init(), taiwan_pay:init(), other:init() };
+  let total = 0, items = 0;
+  orders.forEach(o => {
+    const amount = Number(o.total || 0);
+    const key = by[orderPayKey(o)] ? orderPayKey(o) : 'other';
+    total += amount;
+    items += (o.line_items||[]).reduce((s,i)=>s+Number(i.quantity||0),0);
+    by[key].total += amount;
+    by[key].count += 1;
+    by[key].orders.push(o);
+  });
+  return { total, items, by };
+}
+function paymentDetailHtml(title, group) {
+  const rows = group.orders.length
+    ? group.orders.map(o => `<div class="pay-line"><span>#${o.id} · ${new Date(o.date_created).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}</span><strong>$${Number(o.total).toLocaleString()}</strong></div>`).join('')
+    : '<div class="pay-line"><span>今日沒有此付款方式</span><strong>$0</strong></div>';
+  return `<div class="pay-detail"><div class="pay-detail-title">${title}｜${group.count} 筆｜$${group.total.toLocaleString()}</div>${rows}</div>`;
 }
 
 // Daily Stats
@@ -420,27 +481,27 @@ async function openDaily() {
   const body = document.getElementById('daily-body');
   body.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div>';
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const [saleRes, orderRes] = await Promise.all([
-      wcGet(`reports/sales?date_min=${today}&date_max=${today}`),
-      getTodayOrders()
-    ]);
-    const sale = saleRes.ok ? (await saleRes.json())[0] || {} : {};
-    const orders = orderRes;
-
-    const totalSales = Number(sale.total_sales||0);
-    const totalOrders = sale.total_orders || orders.length;
-    const totalItems = sale.total_items || orders.reduce((s,o)=>s+o.line_items.reduce((ss,i)=>ss+i.quantity,0),0);
+    const today = todayKey();
+    const orders = await getTodayOrders('completed,processing');
+    const summary = summarizeOrders(orders);
+    const totalSales = summary.total;
+    const totalOrders = orders.length;
+    const totalItems = summary.items;
     const avgOrder = totalOrders > 0 ? Math.round(totalSales/totalOrders) : 0;
-    const cash = orders.filter(o=>o.payment_method==='cash').reduce((s,o)=>s+Number(o.total),0);
 
     body.innerHTML = `
       <div class="stats-row"><span class="sk">📅 日期</span><span class="sv">${today}</span></div>
       <div class="stats-row"><span class="sk">💰 總營業額</span><span class="sv">$${totalSales.toLocaleString()}</span></div>
       <div class="stats-row"><span class="sk">🧾 訂單數</span><span class="sv">${totalOrders} 筆</span></div>
       <div class="stats-row"><span class="sk">📦 銷售件數</span><span class="sv">${totalItems} 件</span></div>
-      <div class="stats-row"><span class="sk">💵 現金收入</span><span class="sv">$${cash.toLocaleString()}</span></div>
+      <div class="stats-row"><span class="sk">💵 現金收入</span><span class="sv">$${summary.by.cash.total.toLocaleString()}</span></div>
+      <div class="stats-row"><span class="sk">🟢 Line Pay</span><span class="sv">$${summary.by.line_pay.total.toLocaleString()}</span></div>
+      <div class="stats-row"><span class="sk">🟠 台灣 Pay</span><span class="sv">$${summary.by.taiwan_pay.total.toLocaleString()}</span></div>
       <div class="stats-row"><span class="sk">📊 平均客單價</span><span class="sv">$${avgOrder.toLocaleString()}</span></div>
+      ${paymentDetailHtml('💵 現金每筆', summary.by.cash)}
+      ${paymentDetailHtml('🟢 Line Pay 每筆', summary.by.line_pay)}
+      ${paymentDetailHtml('🟠 台灣 Pay 每筆', summary.by.taiwan_pay)}
+      ${summary.by.other.count ? paymentDetailHtml('❔ 其他付款每筆', summary.by.other) : ''}
     `;
   } catch(e) {
     body.innerHTML = '<div class="modal-spinner">載入失敗，請確認連線</div>';
@@ -462,7 +523,7 @@ async function openVoid() {
           <span class="txn-amt ${o.status==='cancelled'?'voided':''}">$${Number(o.total).toLocaleString()}</span>
         </div>
         <div class="txn-bot">
-          <span>${o.billing?.last_name||''}${o.billing?.first_name||''} · ${o.line_items?.length||0} 項商品</span>
+          <span>${o.billing?.last_name||''}${o.billing?.first_name||''} · ${orderPayLabel(o)} · ${o.line_items?.length||0} 項商品</span>
           ${o.status!=='cancelled'
             ? `<button class="txn-void-btn" onclick="voidOrder(${o.id},this)">作廢</button>`
             : `<span style="color:#f87171;font-size:.75rem">已作廢</span>`}
@@ -493,18 +554,79 @@ async function voidOrder(orderId, btn) {
   } catch(e) { btn.disabled=false; btn.textContent='作廢'; toast('作廢失敗','err'); }
 }
 
+// Refund (real return, keep original sale history)
+async function openRefund() {
+  document.getElementById('refund-modal').classList.add('show');
+  const body = document.getElementById('refund-body');
+  body.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div>';
+  try {
+    const orders = await getTodayOrders('completed,processing');
+    if (!orders.length) { body.innerHTML = '<div class="modal-spinner">今日尚無可退貨訂單</div>'; return; }
+    body.innerHTML = `
+      <div style="font-size:.8rem;color:rgba(255,255,255,.55);line-height:1.6;background:rgba(255,255,255,.05);padding:10px 12px;border-radius:8px;">
+        退貨會保留原本銷售紀錄，另外建立退款紀錄，並把訂單標記為已退款；作廢則適合結錯單立即取消。
+      </div>
+      ${orders.map(o => {
+        const items = (o.line_items||[]).map(i=>`${i.name} ×${i.quantity}`).join('、');
+        return `<div class="txn-item">
+          <div class="txn-top">
+            <span class="txn-id">#${o.id} · ${new Date(o.date_created).toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}</span>
+            <span class="txn-amt">$${Number(o.total).toLocaleString()}</span>
+          </div>
+          <div class="txn-bot">
+            <span>${orderPayLabel(o)} · ${o.billing?.last_name||''}${o.billing?.first_name||''}</span>
+            <button class="txn-void-btn" onclick="refundOrder(${o.id},${Number(o.total)},this)">退貨</button>
+          </div>
+          <div style="font-size:.72rem;color:rgba(255,255,255,.4);margin-top:4px">${items}</div>
+        </div>`;
+      }).join('')}`;
+  } catch(e) {
+    body.innerHTML = '<div class="modal-spinner">載入失敗</div>';
+  }
+}
+
+async function refundOrder(orderId, amount, btn) {
+  if (!confirm(`確定要退貨訂單 #${orderId}？\\n金額：$${Number(amount).toLocaleString()}\\n此動作會建立退款紀錄並標記為已退款。`)) return;
+  btn.disabled = true; btn.textContent = '處理中…';
+  try {
+    const rr = await fetch(`${STORE_URL}/wp-json/wc/v3/orders/${orderId}/refunds`, {
+      method: 'POST',
+      headers: { Authorization: wcAuth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: String(amount),
+        reason: 'POS 退貨處理',
+        api_refund: false
+      })
+    });
+    if (!rr.ok) throw new Error();
+    await fetch(`${STORE_URL}/wp-json/wc/v3/orders/${orderId}`, {
+      method: 'PUT',
+      headers: { Authorization: wcAuth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'refunded' })
+    });
+    btn.closest('.txn-item').querySelector('.txn-amt').classList.add('voided');
+    btn.replaceWith(Object.assign(document.createElement('span'),{
+      textContent:'已退貨', style:'color:#fb923c;font-size:.75rem'
+    }));
+    toast('退貨已完成','ok');
+    loadTodayStats();
+  } catch(e) {
+    btn.disabled=false; btn.textContent='退貨'; toast('退貨失敗，請到 WooCommerce 後台確認','err');
+  }
+}
+
 // Transaction detail
 async function openTxn() {
   document.getElementById('txn-modal').classList.add('show');
   const body = document.getElementById('txn-body');
   body.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div>';
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayKey();
     const r = await wcGet(`orders?after=${today}T00:00:00&before=${today}T23:59:59&per_page=100`);
     const orders = r.ok ? await r.json() : [];
     if (!orders.length) { body.innerHTML = '<div class="modal-spinner">今日尚無交易</div>'; return; }
     body.innerHTML = orders.map(o => {
-      const statusMap = {'completed':'✅ 完成','cancelled':'❌ 作廢','processing':'⏳ 處理中'};
+      const statusMap = {'completed':'✅ 完成','cancelled':'❌ 作廢','processing':'⏳ 處理中','refunded':'↩️ 已退貨'};
       const items = (o.line_items||[]).map(i=>`${i.name} ×${i.quantity}`).join('、');
       return `<div class="txn-item">
         <div class="txn-top">
@@ -512,7 +634,7 @@ async function openTxn() {
           <span class="txn-amt ${o.status==='cancelled'?'voided':''}">$${Number(o.total).toLocaleString()}</span>
         </div>
         <div class="txn-bot">
-          <span>${statusMap[o.status]||o.status}</span>
+          <span>${statusMap[o.status]||o.status} · ${orderPayLabel(o)}</span>
           <span>${o.billing?.last_name||''}${o.billing?.first_name||''}</span>
         </div>
         <div style="font-size:.72rem;color:rgba(255,255,255,.4);margin-top:4px">${items}</div>
@@ -529,7 +651,7 @@ async function openProd() {
   const body = document.getElementById('prod-body');
   body.innerHTML = '<div class="modal-spinner"><div class="mini-spinner"></div><div>載入中…</div></div>';
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayKey();
     const r = await wcGet(`reports/top_sellers?date_min=${today}&date_max=${today}&per_page=20`);
     if (!r.ok) throw new Error();
     const data = await r.json();
