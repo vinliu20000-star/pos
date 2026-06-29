@@ -122,6 +122,7 @@ body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: va
 .sdot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
 .sdot.green { background: var(--green); box-shadow: 0 0 6px var(--green-mid); }
 .sdot.yellow { background: var(--yellow); animation: blink 1s infinite; }
+.sdot.red { background: var(--red); box-shadow: 0 0 6px rgba(220,38,38,.35); }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
 /* ══ MAIN ══ */
@@ -498,6 +499,10 @@ const SPEND_YR_KEY = '_cbt77_yrear';    // 消費年份（自訂）
 const BDAY_KEY     = '_cbt77_birthday'; // 生日（自訂）
 const PTS_PER_100  = 1;                 // 每 $100 得 1 點
 const PTS_VALUE    = 1;                 // 1點 = $1
+const PRODUCT_CACHE_KEY = 'cbt77_pos_product_cache_v2';
+const MEMBER_CACHE_KEY  = 'cbt77_pos_member_cache_v2';
+const OFFLINE_QUEUE_KEY = 'cbt77_pos_offline_queue_v2';
+const OFFLINE_MAP_KEY   = 'cbt77_pos_offline_member_map_v2';
 const PAYMENT_METHODS = {
   cash:       { title:'現金', icon:'💵' },
   line_pay:   { title:'Line Pay', icon:'🟢' },
@@ -519,6 +524,7 @@ let cfg = {key:'',secret:''};
 let allProducts=[], filteredProducts=[], categories=[];
 let cart=[], member=null, redeemPts=0, discPct=0, currentCat=0, demoMode=false;
 let checkoutPaymentMethod='cash';
+let appOnline=true, syncingOffline=false;
   const PAGE_SIZE=30; let currentPage=0;
 
 // ═══════════════════════════════════════════
@@ -549,6 +555,251 @@ function resetDisplayZoom() {
 applyDisplayZoom();
 
 // ═══════════════════════════════════════════
+// OFFLINE MODE — cache / queue / auto sync
+// ═══════════════════════════════════════════
+function safeJsonParse(text, fallback) {
+  try { return JSON.parse(text); } catch(e) { return fallback; }
+}
+function readStore(key, fallback) {
+  return safeJsonParse(localStorage.getItem(key) || '', fallback);
+}
+function writeStore(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+  catch(e) { toast('本機儲存空間不足，請先同步或清除瀏覽器資料', 'err'); return false; }
+}
+function getOfflineQueue() { return readStore(OFFLINE_QUEUE_KEY, []); }
+function saveOfflineQueue(queue) { writeStore(OFFLINE_QUEUE_KEY, queue); updateConnectionStatus(); }
+function pendingOfflineCount() { return getOfflineQueue().filter(q => q.status !== 'synced').length; }
+function getMemberCache() { return readStore(MEMBER_CACHE_KEY, {}); }
+function saveMemberCache(cache) { writeStore(MEMBER_CACHE_KEY, cache); }
+function getOfflineMemberMap() { return readStore(OFFLINE_MAP_KEY, {}); }
+function saveOfflineMemberMap(map) { writeStore(OFFLINE_MAP_KEY, map); }
+function normalizePhone(phone) { return String(phone || '').replace(/\D/g, ''); }
+function cacheMember(m) {
+  if (!m || !m.phone) return;
+  const cache = getMemberCache();
+  cache[normalizePhone(m.phone)] = {
+    id: m.id,
+    name: m.name || '',
+    email: m.email || '',
+    phone: m.phone || '',
+    role: m.role || 'customer',
+    points: Number(m.points || 0),
+    yearlySpend: Number(m.yearlySpend || 0),
+    offlineRegistration: m.offlineRegistration || null,
+    updatedAt: new Date().toISOString(),
+  };
+  saveMemberCache(cache);
+}
+function getCachedMember(phone) {
+  return getMemberCache()[normalizePhone(phone)] || null;
+}
+function compactProduct(p) {
+  const bc = p.barcode || p.sku || '';
+  const img = p.images && p.images[0] ? p.images[0] : null;
+  return {
+    id: p.id,
+    name: p.name,
+    sku: p.sku || '',
+    price: String(p.price || 0),
+    stock_quantity: Number(p.stock_quantity || 0),
+    manage_stock: !!p.manage_stock,
+    categories: (p.categories || []).map(c => ({id: c.id, name: c.name})),
+    barcode: bc,
+    images: img ? [{src: img.src || null, _ph: img._ph, _bg: img._bg}] : [],
+  };
+}
+function saveProductCache(products) {
+  const payload = {savedAt: new Date().toISOString(), products: products.map(compactProduct)};
+  writeStore(PRODUCT_CACHE_KEY, payload);
+}
+function loadProductCache() {
+  const cache = readStore(PRODUCT_CACHE_KEY, null);
+  return cache && Array.isArray(cache.products) ? cache.products : [];
+}
+function markOnline(message) {
+  appOnline = true;
+  setSyncStatus('green', message || `已連線 · ${allProducts.length} 件商品`);
+}
+function markOffline(message) {
+  appOnline = false;
+  updateConnectionStatus(message);
+}
+function updateConnectionStatus(message) {
+  if (syncingOffline) {
+    setSyncStatus('yellow', `同步中 · ${pendingOfflineCount()} 筆待補送`);
+    return;
+  }
+  const pending = pendingOfflineCount();
+  if (appOnline) setSyncStatus('green', pending ? `已連線 · ${pending} 筆待同步` : `已連線 · ${allProducts.length} 件商品`);
+  else setSyncStatus('red', message || (pending ? `已離線 · ${pending} 筆待同步` : '已離線'));
+}
+async function checkOnlineQuietly() {
+  if (demoMode) return false;
+  try {
+    const r = await wcGet('products?per_page=1&status=publish');
+    if (!r.ok) throw new Error('offline');
+    appOnline = true;
+    return true;
+  } catch(e) {
+    appOnline = false;
+    return false;
+  }
+}
+function updateLocalStockFromCart() {
+  cart.forEach(item => {
+    const p = allProducts.find(prod => Number(prod.id) === Number(item.product.id));
+    if (p && p.manage_stock) p.stock_quantity = Math.max(0, Number(p.stock_quantity || 0) - item.qty);
+  });
+  saveProductCache(allProducts);
+}
+function applyLocalMemberAfterSale(earned, total) {
+  if (!member) return;
+  const newPoints = Math.max(0, Number(member.points || 0) - redeemPts) + earned;
+  const newYearSpend = Number(member.yearlySpend || 0) + total;
+  const newTier = calcNewTier(member.role, getSub(), newYearSpend);
+  member.points = newPoints;
+  member.yearlySpend = newYearSpend;
+  member.role = newTier.key;
+  cacheMember(member);
+}
+function buildOrderBody(payment, cash, chg, paymentRef) {
+  const feeLines=[];
+  if(discPct>0)feeLines.push({name:`等級折扣 ${discPct}%`,total:String(-getTierDisc())});
+  if(redeemPts>0)feeLines.push({name:`點數折抵（${redeemPts}點）`,total:String(-(redeemPts*PTS_VALUE))});
+  const orderBody={
+    status:'completed',payment_method:checkoutPaymentMethod,payment_method_title:payment.title,set_paid:true,
+    line_items:cart.map(c=>({product_id:c.product.id,quantity:c.qty})),
+    fee_lines:feeLines,
+    meta_data:[
+      {key:'_pos_payment_method',value:checkoutPaymentMethod},
+      {key:'_pos_payment_title',value:payment.title},
+      {key:'_pos_payment_ref',value:paymentRef},
+      {key:'_pos_payment_confirmed_at',value:new Date().toISOString()},
+      {key:'_pos_cash',value:String(cash)},
+      {key:'_pos_change',value:String(chg)},
+      {key:'_pos_terminal',value:'CBT77 POS v5'},
+    ]
+  };
+  if(member && !String(member.id).startsWith('offline_')) orderBody.customer_id=member.id;
+  return orderBody;
+}
+function queueOfflineOrder(orderBody, saleData) {
+  const localId = 'OFF-' + new Date().toISOString().replace(/[-:.TZ]/g,'').slice(0,14) + '-' + Math.floor(Math.random()*900);
+  const queued = {
+    id: localId,
+    type: 'order',
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    orderBody,
+    saleData,
+    memberSnapshot: member ? JSON.parse(JSON.stringify(member)) : null,
+  };
+  queued.orderBody.meta_data = [
+    ...(queued.orderBody.meta_data || []),
+    {key:'_pos_offline_local_id', value:localId},
+    {key:'_pos_offline_created_at', value:queued.createdAt},
+  ];
+  const queue = getOfflineQueue();
+  queue.push(queued);
+  saveOfflineQueue(queue);
+  updateLocalStockFromCart();
+  applyLocalMemberAfterSale(saleData.earned || 0, saleData.total || 0);
+  markOffline();
+  return localId;
+}
+async function createOfflineMemberIfNeeded(snapshot) {
+  if (!snapshot || !String(snapshot.id).startsWith('offline_')) return snapshot ? snapshot.id : null;
+  const map = getOfflineMemberMap();
+  if (map[snapshot.id]) return map[snapshot.id];
+  const registration = snapshot.offlineRegistration;
+  if (!registration) return null;
+  const r = await wcPost('customers', registration);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.message || '會員補建失敗');
+  map[snapshot.id] = data.id;
+  saveOfflineMemberMap(map);
+  const cache = getMemberCache();
+  const phone = normalizePhone(snapshot.phone);
+  if (cache[phone]) {
+    cache[phone].id = data.id;
+    cache[phone].offlineRegistration = null;
+    saveMemberCache(cache);
+  }
+  return data.id;
+}
+async function syncOneOfflineOrder(item) {
+  const body = JSON.parse(JSON.stringify(item.orderBody));
+  const memberId = await createOfflineMemberIfNeeded(item.memberSnapshot);
+  if (memberId) body.customer_id = memberId;
+  const r = await wcPost('orders', body);
+  const order = await r.json();
+  if (!r.ok) throw new Error(order.message || '訂單補送失敗');
+  if (memberId && item.saleData) {
+    try {
+      const newPoints = item.saleData.memberNewPoints;
+      const newYearSpend = item.saleData.memberNewYearSpend;
+      const newTier = item.saleData.memberNewTier;
+      if (newTier) {
+        await fetch(`${STORE_URL}/wp-json/wc/v3/customers/${memberId}`,{
+          method:'POST', headers:{Authorization:wcAuth(),'Content-Type':'application/json'},
+          body:JSON.stringify({role:newTier})
+        });
+      }
+      if (typeof newPoints === 'number') {
+        await fetch(`${STORE_URL}/wp-json/cbt77/v1/points/${memberId}`,{
+          method:'POST', headers:{Authorization:wcAuth(),'Content-Type':'application/json'},
+          body:JSON.stringify({points:newPoints})
+        });
+      }
+      if (typeof newYearSpend === 'number') {
+        await fetch(`${STORE_URL}/wp-json/wc/v3/customers/${memberId}`,{
+          method:'POST', headers:{Authorization:wcAuth(),'Content-Type':'application/json'},
+          body:JSON.stringify({meta_data:[
+            {key:SPEND_KEY,value:String(newYearSpend)},
+            {key:SPEND_YR_KEY,value:String(new Date(item.createdAt).getFullYear())},
+          ]})
+        });
+      }
+    } catch(e) {
+      console.log('member sync warning', e);
+    }
+  }
+  return order.id;
+}
+async function syncOfflineQueue(silent=false) {
+  const pending = getOfflineQueue().filter(q => q.status !== 'synced');
+  if (!pending.length || syncingOffline || demoMode) { updateConnectionStatus(); return; }
+  const online = await checkOnlineQuietly();
+  if (!online) { markOffline(); return; }
+  syncingOffline = true;
+  updateConnectionStatus();
+  const queue = getOfflineQueue();
+  let okCount = 0;
+  try {
+    for (const item of queue) {
+      if (item.status === 'synced') continue;
+      const realId = await syncOneOfflineOrder(item);
+      item.status = 'synced';
+      item.syncedAt = new Date().toISOString();
+      item.realOrderId = realId;
+      okCount++;
+      saveOfflineQueue(queue);
+    }
+    markOnline(`已連線 · 離線資料已同步`);
+    if (okCount && !silent) toast(`已補送 ${okCount} 筆離線訂單`, 'ok');
+  } catch(e) {
+    appOnline = false;
+    if (!silent) toast('離線資料尚未完全同步，稍後會再試', 'err');
+    markOffline();
+  } finally {
+    syncingOffline = false;
+    updateConnectionStatus();
+  }
+}
+setInterval(()=>syncOfflineQueue(true), 30000);
+
+// ═══════════════════════════════════════════
 // CLOCK
 // ═══════════════════════════════════════════
 setInterval(()=>{
@@ -563,7 +814,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   cfg={key:SAVED_KEY,secret:SAVED_SECRET};
   document.getElementById('setup-screen').style.display='none';
   bindEvents();
-  loadProducts().then(function(){setSyncStatus('green','已連線 · '+allProducts.length+' 件商品');});
+  loadProducts().then(function(){syncOfflineQueue(true);});
 });
 
 async function autoConnect(key,secret) {
@@ -649,7 +900,7 @@ const wcPut=(path,body)=>fetch(`${STORE_URL}/wp-json/wc/v3/${path}`,{method:'PUT
 // LOAD PRODUCTS
 // ═══════════════════════════════════════════
 async function loadProducts() {
-  showLoad('載入商品中…'); allProducts=[]; let pg=1;
+  showLoad('載入商品中…'); allProducts=[]; let pg=1; let onlineLoaded=false;
   while(true) {
     document.getElementById('loading-sub').textContent=`已載入 ${allProducts.length} 件…`;
     try {
@@ -663,14 +914,32 @@ async function loadProducts() {
         }
         if(!p.barcode)p.barcode=p.sku;
       });
-      allProducts.push(...data);
+      allProducts.push(...data.map(compactProduct));
+      onlineLoaded=true;
       if(data.length<100)break; pg++;
     } catch(e){break;}
+  }
+  if (onlineLoaded && allProducts.length) {
+    saveProductCache(allProducts);
+    appOnline=true;
+  } else {
+    const cached = loadProductCache();
+    if (cached.length) {
+      allProducts = cached;
+      markOffline(`已離線 · 使用快取 ${allProducts.length} 件商品`);
+      toast('官網暫時連不上，已切換離線收銀', 'err');
+    } else {
+      markOffline('已離線 · 沒有商品快取');
+      hideLoad();
+      toast('離線且沒有商品快取，需先連線成功一次', 'err');
+      return;
+    }
   }
   const cm={};
   allProducts.forEach(p=>p.categories.forEach(c=>cm[c.id]=c.name));
   categories=Object.entries(cm).map(([id,name])=>({id:+id,name}));
   hideLoad(); renderCatBar(); filterProds('',0);
+  updateConnectionStatus();
 }
 
 function genDemoProducts() {
@@ -850,6 +1119,17 @@ async function searchMember(){
     member={id:99,name:'劉子宏',email:'demo@cbt77.tw',phone,role:'diamond_fan',points:162,yearlySpend:8500};
     showMemberInfo();return;
   }
+  if(!appOnline){
+    const cached=getCachedMember(phone);
+    if(cached){
+      member={...cached};
+      showMemberInfo();
+      toast('離線模式：已載入本機會員資料','ok');
+    } else {
+      toast('離線時找不到本機會員，可先新增暫存會員或一般結帳','err');
+    }
+    return;
+  }
   showLoad('查詢會員…');
   // 用 CBT77 Points API 插件查詢
   try {
@@ -869,6 +1149,7 @@ async function searchMember(){
         steel:'steel_fan',steel_fan:'steel_fan',iron:'steel_fan'};
       member={id:m.user_id,name:name||m.name,email:m.email,phone:phone,
         role:rm[m.role]||'customer',points:m.points||0,yearlySpend:m.yearly_spend||0};
+      cacheMember(member);
       showMemberInfo();
       toast('找到：'+member.name,'ok');
       return;
@@ -898,9 +1179,23 @@ async function searchMember(){
       steel:'steel_fan',steel_fan:'steel_fan',iron:'steel_fan'};
     member={id:full.id,name:name,email:full.email,phone:phone,
       role:rm[full.role||'customer']||'customer',points:0,yearlySpend:0};
+    cacheMember(member);
     showMemberInfo();
     toast('找到：'+member.name,'ok');
-  } catch(e){hideLoad();toast('查詢失敗','err');}
+  } catch(e){
+    hideLoad();
+    appOnline=false;
+    const cached=getCachedMember(phone);
+    if(cached){
+      member={...cached};
+      showMemberInfo();
+      markOffline();
+      toast('官網連不上，已載入本機會員資料','ok');
+    } else {
+      markOffline();
+      toast('查詢失敗，已切換離線模式','err');
+    }
+  }
 }
 
 function getTier(role){return TIERS.find(function(t){return t.key===role;})||TIERS[0];}
@@ -950,6 +1245,18 @@ async function registerMember(){
   errEl.style.display='none';
 
   const birthday=by&&bm&&bd?`${by}-${String(bm).padStart(2,'0')}-${String(bd).padStart(2,'0')}`:'';
+  const genEmail=email||`${phone}@cbt77.tw`;
+  const genPwd=phone;
+  const body={
+    email:genEmail,first_name:first,last_name:last,username:phone,role:'customer',password:genPwd,
+    billing:{phone,first_name:first,last_name:last,email:genEmail},
+    meta_data:[
+      {key:PTS_KEY,value:'0'},         // Vite Rewards 點數
+      {key:SPEND_KEY,value:'0'},
+      {key:SPEND_YR_KEY,value:String(new Date().getFullYear())},
+      ...(birthday?[{key:BDAY_KEY,value:birthday}]:[]),
+    ]
+  };
 
   if(demoMode){
     member={id:Math.floor(Math.random()*9000)+100,name:`${last}${first}`,email:email||`${phone}@cbt77.tw`,phone,role:'customer',points:0,yearlySpend:0};
@@ -957,28 +1264,33 @@ async function registerMember(){
     toast(`✓ 已新增：${member.name}`,'ok');return;
   }
 
+  if(!appOnline){
+    member={id:'offline_'+Date.now(),name:`${last}${first}`,email:genEmail,phone,role:'customer',points:0,yearlySpend:0,offlineRegistration:body};
+    cacheMember(member);
+    closeOverlay('reg-overlay');showMemberInfo();
+    toast(`離線暫存會員：${member.name}，連線後會補建`, 'ok');
+    return;
+  }
+
   showLoad('建立會員…');
   try {
-    const genEmail=email||`${phone}@cbt77.tw`;
-    const genPwd=phone;
-    const body={
-      email:genEmail,first_name:first,last_name:last,username:phone,role:'customer',password:genPwd,
-      billing:{phone,first_name:first,last_name:last,email:genEmail},
-      meta_data:[
-        {key:PTS_KEY,value:'0'},         // Vite Rewards 點數
-        {key:SPEND_KEY,value:'0'},
-        {key:SPEND_YR_KEY,value:String(new Date().getFullYear())},
-        ...(birthday?[{key:BDAY_KEY,value:birthday}]:[]),
-      ]
-    };
     const r=await wcPost('customers',body);
     const data=await r.json();
     hideLoad();
     if(!r.ok){errEl.textContent=data.message||'建立失敗，電話可能已被使用';errEl.style.display='block';return;}
     member={id:data.id,name:`${last}${first}`,email:genEmail,phone,role:'customer',points:0,yearlySpend:0};
+    cacheMember(member);
     closeOverlay('reg-overlay');showMemberInfo();
     toast(`✓ 已新增：${member.name}`,'ok');
-  } catch(e){hideLoad();errEl.textContent='網路錯誤';errEl.style.display='block';}
+  } catch(e){
+    hideLoad();
+    appOnline=false;
+    member={id:'offline_'+Date.now(),name:`${last}${first}`,email:genEmail,phone,role:'customer',points:0,yearlySpend:0,offlineRegistration:body};
+    cacheMember(member);
+    closeOverlay('reg-overlay');showMemberInfo();
+    markOffline();
+    toast(`官網連不上，已暫存會員：${member.name}`, 'ok');
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -1080,71 +1392,83 @@ async function confirmCheckout(){
     return;
   }
 
+  const earned=member?Math.floor(tot/100)*PTS_PER_100:0;
+  const memberNewPoints=member?Math.max(0,Number(member.points||0)-redeemPts)+earned:null;
+  const memberNewYearSpend=member?Number(member.yearlySpend||0)+tot:null;
+  const memberNewTier=member?calcNewTier(member.role,sub,memberNewYearSpend):null;
+  const upgraded=member&&memberNewTier.key!==member.role?memberNewTier:null;
+  const saleData={total:tot,change:chg,earned,upgraded,payment:payment.title,paymentRef,
+    memberNewPoints,memberNewYearSpend,memberNewTier:memberNewTier?memberNewTier.key:null};
+  const orderBody=buildOrderBody(payment,cash,chg,paymentRef);
+
+  if(!appOnline){
+    const localId=queueOfflineOrder(orderBody,saleData);
+    showSuccess({...saleData,id:localId,offline:true});
+    toast('已離線儲存，官網恢復後會自動補送','ok');
+    return;
+  }
+
   showLoad('建立訂單中…');
+  let orderCreated=false;
   try {
-    const feeLines=[];
-    if(discPct>0)feeLines.push({name:`等級折扣 ${discPct}%`,total:String(-getTierDisc())});
-    if(redeemPts>0)feeLines.push({name:`點數折抵（${redeemPts}點）`,total:String(-(redeemPts*PTS_VALUE))});
-
-    const orderBody={
-      status:'completed',payment_method:checkoutPaymentMethod,payment_method_title:payment.title,set_paid:true,
-      line_items:cart.map(c=>({product_id:c.product.id,quantity:c.qty})),
-      fee_lines:feeLines,
-      meta_data:[
-        {key:'_pos_payment_method',value:checkoutPaymentMethod},
-        {key:'_pos_payment_title',value:payment.title},
-        {key:'_pos_payment_ref',value:paymentRef},
-        {key:'_pos_payment_confirmed_at',value:new Date().toISOString()},
-        {key:'_pos_cash',value:String(cash)},
-        {key:'_pos_change',value:String(chg)},
-        {key:'_pos_terminal',value:'CBT77 POS v5'},
-      ]
-    };
-    if(member)orderBody.customer_id=member.id;
-
     const r=await wcPost('orders',orderBody);
-    const order=await r.json();
+    const order=await r.json().catch(()=>({}));
 
-    let upgraded=null,earned=0;
+    if(!r.ok){
+      hideLoad();
+      if(r.status>=500||r.status===0){
+        const localId=queueOfflineOrder(orderBody,saleData);
+        showSuccess({...saleData,id:localId,offline:true});
+        toast('官網暫時無法建立訂單，已改存離線單','ok');
+        return;
+      }
+      toast('訂單失敗：'+(order.message||''),'err');
+      return;
+    }
+    orderCreated=true;
 
-    if(member&&r.ok){
-      earned=Math.floor(tot/100)*PTS_PER_100;
-      // 新點數 = 舊點數 - 折抵 + 新賺
-      const newPoints=Math.max(0,member.points-redeemPts)+earned;
-      const thisYear=new Date().getFullYear();
-      const newYearSpend=(member.yearlySpend||0)+tot;
-      const newTier=calcNewTier(member.role,sub,newYearSpend);
-      if(newTier.key!==member.role)upgraded=newTier;
+    if(member){
       if(upgraded){
-        await fetch('https://cbt77.tw/wp-json/wc/v3/customers/'+member.id,{
+        await fetch(`${STORE_URL}/wp-json/wc/v3/customers/${member.id}`,{
           method:'POST',
           headers:{Authorization:wcAuth(),'Content-Type':'application/json'},
           body:JSON.stringify({role:upgraded.key})
         });
       }
-
-      // 更新 WooCommerce 用戶：_viter_points（Vite Rewards 同步）+ 年消費 + 等級
-      // 用 CBT77 Points API 更新點數和等級
-      await fetch('https://cbt77.tw/wp-json/cbt77/v1/points/'+member.id,{
+      await fetch(`${STORE_URL}/wp-json/cbt77/v1/points/${member.id}`,{
         method:'POST',
         headers:{Authorization:wcAuth(),'Content-Type':'application/json'},
-        body:JSON.stringify({points:newPoints})
+        body:JSON.stringify({points:memberNewPoints})
       });
-      // 更新年消費（用 WooCommerce customers API POST）
-      await fetch('https://cbt77.tw/wp-json/wc/v3/customers/'+member.id,{
+      await fetch(`${STORE_URL}/wp-json/wc/v3/customers/${member.id}`,{
         method:'POST',
         headers:{Authorization:wcAuth(),'Content-Type':'application/json'},
         body:JSON.stringify({meta_data:[
-          {key:SPEND_KEY,value:String(newYearSpend)},
-          {key:SPEND_YR_KEY,value:String(thisYear)},
+          {key:SPEND_KEY,value:String(memberNewYearSpend)},
+          {key:SPEND_YR_KEY,value:String(new Date().getFullYear())},
         ]})
       });
+      member.points=memberNewPoints;
+      member.yearlySpend=memberNewYearSpend;
+      member.role=memberNewTier.key;
+      cacheMember(member);
     }
 
     hideLoad();
-    if(!r.ok){toast('訂單失敗：'+(order.message||''),'err');return;}
-    showSuccess({id:order.id,total:tot,change:chg,earned,upgraded,payment:payment.title,paymentRef});
-  } catch(e){hideLoad();toast('網路錯誤，請重試','err');}
+    markOnline();
+    showSuccess({...saleData,id:order.id});
+  } catch(e){
+    hideLoad();
+    if(orderCreated){
+      toast('訂單已建立，但會員點數更新可能未完成，請稍後檢查','err');
+      showSuccess({...saleData,id:'已建立'});
+      return;
+    }
+    appOnline=false;
+    const localId=queueOfflineOrder(orderBody,saleData);
+    showSuccess({...saleData,id:localId,offline:true});
+    toast('網路中斷，已改存離線單','ok');
+  }
 }
 
 function showSuccess(data){
@@ -1155,10 +1479,11 @@ function showSuccess(data){
     ub.innerHTML=`<div class="upgrade-banner">🎉 恭喜升等為 ${data.upgraded.label}！</div>`;
   }else ub.style.display='none';
   let html=`
-    <div class="orow"><span class="ok2">訂單編號</span><span class="ov">#${data.id}</span></div>
+    <div class="orow"><span class="ok2">${data.offline?'離線單號':'訂單編號'}</span><span class="ov">#${data.id}</span></div>
     <div class="orow"><span class="ok2">付款方式</span><span class="ov">${data.payment||'現金'}</span></div>
     <div class="orow"><span class="ok2">應收金額</span><span class="ov">$${Number(data.total).toLocaleString()}</span></div>
     <div class="orow"><span class="ok2">找　零</span><span class="ov">$${Number(data.change).toLocaleString()}</span></div>`;
+  if(data.offline)html+=`<div class="orow"><span class="ok2">同步狀態</span><span class="ov" style="color:var(--red)">待官網恢復後補送</span></div>`;
   if(data.paymentRef)html+=`<div class="orow"><span class="ok2">交易序號</span><span class="ov">${data.paymentRef}</span></div>`;
   if(data.earned>0)html+=`<div class="orow"><span class="ok2">獲得點數</span><span class="ov" style="color:var(--green)">+${data.earned} 點</span></div>`;
   if(redeemPts>0)html+=`<div class="orow"><span class="ok2">折抵點數</span><span class="ov" style="color:var(--red)">-${redeemPts} 點</span></div>`;
@@ -1182,7 +1507,11 @@ function flashCard(id){
 // ═══════════════════════════════════════════
   function reloadProducts(){
   allProducts=[];filteredProducts=[];categories=[];
-  loadProducts().then(function(){setSyncStatus('green','已連線 · '+allProducts.length+' 件商品');toast('商品已重新載入','ok');});
+  loadProducts().then(function(){
+    updateConnectionStatus();
+    syncOfflineQueue(true);
+    toast(appOnline?'商品已重新載入':'已使用離線商品快取',appOnline?'ok':'err');
+  });
 }
 function showLoad(msg,sub=''){
   document.getElementById('loading-msg').textContent=msg||'載入中…';
