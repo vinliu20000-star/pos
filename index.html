@@ -1004,6 +1004,24 @@ else{grid.querySelectorAll('.load-more-btn').forEach(e=>e.remove());}
     grid.appendChild(btn);
   }
 }
+function updateProductBadges(){
+  const qtyMap=new Map(cart.map(c=>[String(c.product.id),c.qty]));
+  document.querySelectorAll('.pcard').forEach(card=>{
+    const id=String(card.dataset.id||'');
+    let badge=card.querySelector('.in-cart-badge');
+    const qty=qtyMap.get(id);
+    if(qty){
+      if(!badge){
+        badge=document.createElement('div');
+        badge.className='in-cart-badge';
+        card.insertBefore(badge,card.firstChild);
+      }
+      badge.textContent=qty;
+    }else if(badge){
+      badge.remove();
+    }
+  });
+}
 function mkPCard(p){
   const inCart=cart.find(c=>c.product.id===p.id);
   const out=p.manage_stock&&p.stock_quantity<=0;
@@ -1039,14 +1057,14 @@ function addToCart(p){
     if(p.manage_stock&&p.stock_quantity<=0){toast('商品已售完','err');return;}
     cart.push({product:p,qty:1});
   }
-  renderCart();renderProds();
+  renderCart();updateProductBadges();flashCard(p.id);
 }
 function chgQty(id,d){
   const i=cart.findIndex(c=>c.product.id===id);if(i<0)return;
   cart[i].qty+=d;if(cart[i].qty<=0)cart.splice(i,1);
-  renderCart();renderProds();
+  renderCart();updateProductBadges();
 }
-function rmCart(id){cart=cart.filter(c=>c.product.id!==id);renderCart();renderProds();}
+function rmCart(id){cart=cart.filter(c=>c.product.id!==id);renderCart();updateProductBadges();}
 
 function renderCart(){
   const list=document.getElementById('cart-list');
@@ -1472,29 +1490,25 @@ async function confirmCheckout(){
 }
 
 function showSuccess(data){
-  document.getElementById('success-sub').textContent=member?`會員：${member.name}`:'一般結帳';
-  const ub=document.getElementById('upgrade-banner');
+  const memberName=member?member.name:'';
+  const orderLabel=data.offline?'離線單':'訂單';
+  const orderId=data.id?` #${data.id}`:'';
+  const paymentName=data.payment||'現金';
+  const totalText=Number(data.total||0).toLocaleString();
   if(data.upgraded){
-    ub.style.display='block';
-    ub.innerHTML=`<div class="upgrade-banner">🎉 恭喜升等為 ${data.upgraded.label}！</div>`;
-  }else ub.style.display='none';
-  let html=`
-    <div class="orow"><span class="ok2">${data.offline?'離線單號':'訂單編號'}</span><span class="ov">#${data.id}</span></div>
-    <div class="orow"><span class="ok2">付款方式</span><span class="ov">${data.payment||'現金'}</span></div>
-    <div class="orow"><span class="ok2">應收金額</span><span class="ov">$${Number(data.total).toLocaleString()}</span></div>
-    <div class="orow"><span class="ok2">找　零</span><span class="ov">$${Number(data.change).toLocaleString()}</span></div>`;
-  if(data.offline)html+=`<div class="orow"><span class="ok2">同步狀態</span><span class="ov" style="color:var(--red)">待官網恢復後補送</span></div>`;
-  if(data.paymentRef)html+=`<div class="orow"><span class="ok2">交易序號</span><span class="ov">${data.paymentRef}</span></div>`;
-  if(data.earned>0)html+=`<div class="orow"><span class="ok2">獲得點數</span><span class="ov" style="color:var(--green)">+${data.earned} 點</span></div>`;
-  if(redeemPts>0)html+=`<div class="orow"><span class="ok2">折抵點數</span><span class="ov" style="color:var(--red)">-${redeemPts} 點</span></div>`;
-  document.getElementById('order-badge').innerHTML=html;
-  document.getElementById('success-overlay').classList.add('show');
+    toast(`結帳成功${orderId}，${memberName||'會員'}升等為 ${data.upgraded.label}`, 'ok');
+  }else{
+    toast(`${orderLabel}結帳成功${orderId}｜${paymentName} $${totalText}`, 'ok');
+  }
+  cart=[];redeemPts=0;discPct=0;
+  clearMember();renderCart();updateProductBadges();
+  document.getElementById('scan-input').focus();
 }
 
 function newOrder(){
   closeOverlay('success-overlay');
   cart=[];redeemPts=0;discPct=0;
-  clearMember();renderCart();renderProds();
+  clearMember();renderCart();updateProductBadges();
   document.getElementById('scan-input').focus();
 }
 function flashCard(id){
